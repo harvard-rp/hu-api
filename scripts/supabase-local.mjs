@@ -15,7 +15,7 @@ const commands = {
   stop: ['stop', '--project-id', project],
   // CLI v3 targets the local stack when no --remote flag is supplied.
   reset: ['db', 'reset'],
-  types: ['gen', 'types', '--lang', 'typescript', '--schema', 'public'],
+  types: ['gen', 'types', '--lang', 'typescript', '--schema', 'public,private'],
   test: ['test', 'db'],
 };
 

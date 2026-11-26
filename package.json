@@ -23,7 +23,8 @@
     "supabase:status": "node scripts/supabase-local.mjs status",
     "supabase:reset": "node scripts/supabase-local.mjs reset",
     "supabase:types": "node scripts/supabase-local.mjs types",
-    "test:integration": "node scripts/supabase-local.mjs test"
+    "test:integration": "node scripts/supabase-local.mjs test",
+    "test:concurrency": "node tests/club-concurrency.mjs"
   },
   "dependencies": {
     "@hono/zod-openapi": "1.6.3",

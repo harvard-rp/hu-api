@@ -1,1 +1,1 @@
--- Add deterministic synthetic fixtures here when a migration introduces schema.
+-- Synthetic integration data lives in the transactional tests or isolated concurrency probes.

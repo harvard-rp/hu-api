@@ -1,6 +1,6 @@
 import { createMiddleware } from 'hono/factory';
 
-import type { Bindings } from '../config/cors';
+import type { Bindings } from '../config/bindings';
 
 export type AppEnv = {
   Bindings: Bindings;

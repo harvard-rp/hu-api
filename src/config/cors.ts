@@ -1,9 +1,7 @@
 import { createMiddleware } from 'hono/factory';
 import { z } from 'zod';
 
-export type Bindings = {
-  CORS_ALLOWED_ORIGINS?: string;
-};
+import type { Bindings } from './bindings';
 
 const browserOrigin = z.string().refine((value) => {
   const url = URL.parse(value);

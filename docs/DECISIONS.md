@@ -17,3 +17,9 @@ Use Hono security headers with a restrictive content security policy for JSON re
 ## HU-001 — Verification and releases
 
 Use Vitest for in-process app tests and Wrangler for the local runtime and dry-run bundle. GitHub Actions uses read-only repository access and checks the frozen lockfile and all verification commands on pushes and pull requests. Keep Cloudflare releases manual.
+
+## HU-003 — Local PostgreSQL and API access
+
+Pin Supabase CLI 3.4.0 and use its JSONC configuration for local PostgreSQL 17. Run the local stack on a loopback Docker bridge. Disable automatic Data API grants for new public objects so future migrations have to opt in explicitly. Use a separate pgTAP smoke test for Docker checks and keep the default CI independent of local services.
+
+Pin Supabase JS 2.119.2 and create a stateless publishable-key client per request when a route needs it. Validate configuration lazily and pass a future verified user JWT per client. Keep SDK failures behind a generic query error. Bundle a test-only Worker during the existing build step to exercise SDK compatibility without wiring Supabase into the public HTTP application.

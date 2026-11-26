@@ -1,2 +1,6 @@
 # Comma-separated browser origins. Leave empty to disable cross-origin access.
 CORS_ALLOWED_ORIGINS=
+
+# Optional until a route uses Supabase. This URL targets the local API gateway.
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_PUBLISHABLE_KEY=

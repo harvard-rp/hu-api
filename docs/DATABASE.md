@@ -41,14 +41,15 @@ writeFileSync(".dev.vars.supabase-local",
 '
 ```
 
-| Command                 | Purpose                                                                                                     |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `pnpm supabase:start`   | Start the local stack using the loopback bridge.                                                            |
-| `pnpm supabase:stop`    | Stop the `hu-api` local stack and keep its database volume.                                                 |
-| `pnpm supabase:status`  | Show local container status without credentials.                                                            |
-| `pnpm supabase:reset`   | Discard local database data, replay Git migrations and run the local seed.                                  |
-| `pnpm supabase:types`   | Regenerate `src/lib/supabase/database.types.ts` from the local `public` schema after successful CLI output. |
-| `pnpm test:integration` | Run pgTAP against the running local database.                                                               |
+| Command                 | Purpose                                                                                                                    |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm supabase:start`   | Start the local stack using the loopback bridge.                                                                           |
+| `pnpm supabase:stop`    | Stop the `hu-api` local stack and keep its database volume.                                                                |
+| `pnpm supabase:status`  | Show local container status without credentials.                                                                           |
+| `pnpm supabase:reset`   | Discard local database data, replay Git migrations and run the local seed.                                                 |
+| `pnpm supabase:types`   | Regenerate `src/lib/supabase/database.types.ts` from the local `public` and `private` schemas after successful CLI output. |
+| `pnpm test:integration` | Run pgTAP against the running local database.                                                                              |
+| `pnpm test:concurrency` | Run two-session club reservation tests after a clean local reset.                                                          |
 
 The scripts accept no additional arguments. Supabase CLI v3 treats `db reset`, `gen types` and `test db` as local unless a remote target is selected. The scripts omit all remote targets. The reset script uses the same loopback network as startup.
 
@@ -59,7 +60,7 @@ The scripts accept no additional arguments. Supabase CLI v3 treats `db reset`, `
 3. Apply pending migrations to the running local stack with `pnpm exec supabase migration up`. Use `pnpm supabase:reset` to verify the entire migration history and seed on a clean local database.
 4. Run `pnpm test:integration` and regenerate types with `pnpm supabase:types`. Review and commit the generated types with the schema changes that require them.
 
-Use `snake_case` for SQL objects. Use UUID primary keys for domain entities, `timestamptz` for timestamps and explicit foreign keys and integrity constraints. Seed only deterministic, synthetic data in `supabase/seed.sql`. Place database assertions in `supabase/tests/` and keep probes transactional so their schema changes roll back.
+Use `snake_case` for SQL objects. Use UUID primary keys for domain entities, `timestamptz` for timestamps and explicit foreign keys and integrity constraints. Version reference catalogs in migrations. Keep player and character fixtures synthetic and confined to database tests. The pgTAP assertions in `supabase/tests/` roll back their probes. The concurrency test commits isolated fixtures so separate sessions can see them, then removes those fixtures.
 
 ### Grants and row-level security
 
@@ -73,7 +74,7 @@ Run `pnpm test` for SDK and HTTP tests with synthetic data and injected fetch. R
 
 The [Database tests workflow](../.github/workflows/database-tests.yml) runs on a standard Ubuntu 24.04 runner for changes to Supabase configuration, migrations, the database script, the application, tests or the toolchain. Review the **Database tests** check on the pull request or in the repository's **Actions** tab. Once the workflow is present on the default branch, use **Actions → Database tests → Run workflow** for a manual run.
 
-The job checks Docker, starts the local Supabase stack on the runner, reports container names and status, rebuilds the local database, runs pgTAP, generates `src/lib/supabase/database.types.ts` on the runner and runs TypeScript checking. The cleanup step runs after any failed step once Docker has been verified. All database operations use the runner's local stack and the job requires only read access to repository contents.
+The job checks Docker, starts the local Supabase stack on the runner, reports container names and status, rebuilds the local database, runs pgTAP and concurrent reservation probes, regenerates `src/lib/supabase/database.types.ts`, checks it against the checked-in file and runs TypeScript checking. The cleanup step runs after any failed step once Docker has been verified. All database operations use the runner's local stack and the job requires only read access to repository contents.
 
 Use the same commands to reproduce the job on a machine with Docker.
 
@@ -82,12 +83,16 @@ pnpm supabase:start
 pnpm supabase:status
 pnpm supabase:reset
 pnpm test:integration
+pnpm test:concurrency
 pnpm supabase:types
+git diff --exit-code -- src/lib/supabase/database.types.ts
 pnpm typecheck
 pnpm supabase:stop
 ```
 
 Run the stop command after an unsuccessful local run as well. The pgTAP smoke test checks PostgreSQL 17 and verifies that a new table receives no default CRUD grants for `anon` and `authenticated`. The probe rolls back.
+
+HU-004 documents the closed-by-default [domain schema](DATABASE_SCHEMA.md) and [business rules](BUSINESS_RULES.md). The integration tests cover identity, reviews, boost capacity, catalogs, memberships and client-role denials.
 
 ## Environments
 

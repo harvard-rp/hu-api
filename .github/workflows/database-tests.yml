@@ -65,9 +65,16 @@ jobs:
         timeout-minutes: 5
         run: pnpm test:integration
 
+      - name: Test concurrent club reservations
+        timeout-minutes: 2
+        run: pnpm test:concurrency
+
       - name: Generate PostgreSQL TypeScript types
         timeout-minutes: 5
         run: pnpm supabase:types
+
+      - name: Check for generated schema drift
+        run: git diff --exit-code -- src/lib/supabase/database.types.ts
 
       - name: Type-check the generated schema
         run: pnpm typecheck

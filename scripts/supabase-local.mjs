@@ -52,6 +52,38 @@ function ensureLocalNetwork() {
   }
 }
 
+function describeTypesFailure({ stdout, stderr, status, signal, error }) {
+  if (error?.code === 'ENOBUFS')
+    return 'CLI output exceeded the capture limit.';
+  if (error) return 'The CLI process could not be run.';
+  if (signal) return `The CLI process was terminated by ${signal}.`;
+
+  // The CLI can write errors to either stream. Match known messages and log
+  // only fixed text because the raw output can contain credentials.
+  const reasons = [
+    [
+      /cannot join a Docker network via --network-id/i,
+      'The CLI does not support --network-id for type generation.',
+    ],
+    [
+      /supabase start is not running\./i,
+      'The local database container is missing. Run pnpm supabase:start.',
+    ],
+    [
+      /failed to inspect service/i,
+      'The CLI could not inspect the local database container. Check Docker and pnpm supabase:status.',
+    ],
+    [
+      /failed to connect to postgres|failed to generate typescript types/i,
+      'The CLI could not read the local PostgreSQL schema. Check pnpm supabase:status and the local database configuration.',
+    ],
+  ];
+  const reason = reasons.find(
+    ([pattern]) => pattern.test(stdout) || pattern.test(stderr),
+  )?.[1];
+  return `CLI exited with code ${status}. ${reason ?? 'Check pnpm supabase:status and the local database configuration.'}`;
+}
+
 async function writeTypes(stdout) {
   const destination = fileURLToPath(
     new URL('../src/lib/supabase/database.types.ts', import.meta.url),
@@ -60,8 +92,15 @@ async function writeTypes(stdout) {
     throw new Error('Supabase CLI did not return a TypeScript Database type.');
   }
 
-  const options = await resolveConfig(destination);
-  const contents = await format(stdout, { ...options, filepath: destination });
+  let contents;
+  try {
+    const options = await resolveConfig(destination);
+    contents = await format(stdout, { ...options, filepath: destination });
+  } catch {
+    throw new Error(
+      'Unable to format the generated Supabase TypeScript types.',
+    );
+  }
   const temporary = `${destination}.${randomUUID()}.tmp`;
   try {
     await writeFile(temporary, contents, { flag: 'wx' });
@@ -113,18 +152,27 @@ async function main([action, ...extra]) {
       ([name]) => !name.startsWith('SUPABASE_'),
     ),
   );
-  const result = spawnSync(
-    process.execPath,
-    [cli, ...commands[action], '--workdir', root, '--network-id', network],
-    {
-      cwd: root,
-      env,
-      encoding: 'utf8',
-      maxBuffer: 16 * 1024 * 1024,
-    },
-  );
+  const args = [...commands[action], '--workdir', root];
+  if (action === 'types') {
+    // CLI 3.4 generates types in-process using the local PostgreSQL port.
+    // Pin the host even if a project env file specifies a different host.
+    env.SUPABASE_SERVICES_HOSTNAME = '127.0.0.1';
+  } else {
+    args.push('--network-id', network);
+  }
+  const result = spawnSync(process.execPath, [cli, ...args], {
+    cwd: root,
+    env,
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+  });
 
   if (result.status !== 0) {
+    if (action === 'types') {
+      throw new Error(
+        `Local Supabase types failed. ${describeTypesFailure(result)}`,
+      );
+    }
     throw new Error(
       `Local Supabase ${action} failed. Check Docker and the local stack.`,
     );

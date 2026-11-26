@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "wrangler dev",
-    "build": "wrangler deploy --dry-run --outdir dist",
+    "build": "wrangler deploy --dry-run --outdir dist && wrangler deploy tests/fixtures/supabase-worker.ts --dry-run --outdir dist/supabase-check",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "lint": "eslint . --max-warnings 0",
@@ -17,10 +17,17 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "supabase:start": "node scripts/supabase-local.mjs start",
+    "supabase:stop": "node scripts/supabase-local.mjs stop",
+    "supabase:status": "node scripts/supabase-local.mjs status",
+    "supabase:reset": "node scripts/supabase-local.mjs reset",
+    "supabase:types": "node scripts/supabase-local.mjs types",
+    "test:integration": "node scripts/supabase-local.mjs test"
   },
   "dependencies": {
     "@hono/zod-openapi": "1.6.3",
+    "@supabase/supabase-js": "2.119.2",
     "hono": "4.13.22",
     "zod": "4.6.7"
   },
@@ -31,6 +38,7 @@
     "eslint": "10.15.0",
     "openapi-types": "12.1.3",
     "prettier": "3.10.1",
+    "supabase": "3.4.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.74.0",
     "vitest": "5.1.2",

@@ -10,3 +10,7 @@
 - Install dependencies with `pnpm install --frozen-lockfile`. Run `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test` and `pnpm build` before submitting changes.
 - Update automated coverage when public behavior changes. Use synthetic data in tests and keep tests independent of remote services.
 - Keep CI permissions read-only and reserve deployments or remote resource creation for explicitly authorized work.
+- Use the pinned Supabase CLI and publishable-key SDK for data access through the Data API. Construct a fresh client for each request that needs it and use the shared query error boundary.
+- Manage local Supabase with the repository scripts. Use synthetic fixtures, version migrations, require explicit database grants and enable RLS on exposed tables. See [the database guide](docs/DATABASE.md).
+- For database changes, validate the migration history and SQL tests with Docker when available and report any checks that could not run. Reserve hosted changes for explicit authorization.
+- Configure the repository-local Git author name and email as specified by the owner. Verify author and committer before publication, omit automatic co-author trailers, and require authorization before rewriting history.

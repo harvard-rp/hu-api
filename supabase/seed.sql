@@ -1,0 +1,1 @@
+-- Add deterministic synthetic fixtures here when a migration introduces schema.

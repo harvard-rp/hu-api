@@ -69,7 +69,25 @@ Publish only approved tables and views in the API schema. Put private data in un
 
 Run `pnpm test` for SDK and HTTP tests with synthetic data and injected fetch. Run `pnpm build` for two Wrangler dry runs: the HTTP Worker and a test-only Worker that exercises the Supabase SDK bundle. Both commands work without Docker or remote credentials.
 
-On a Docker-enabled machine, run `pnpm supabase:start`, `pnpm supabase:status`, `pnpm supabase:reset`, `pnpm test:integration`, `pnpm supabase:types` and `pnpm supabase:stop`. The integration smoke test checks PostgreSQL 17 and verifies that a new table receives no default CRUD grants for `anon` and `authenticated`. Its probe rolls back. HU-003 uses an empty migration directory and will generate the schema types on a local Docker run.
+### Automated PostgreSQL validation
+
+The [Database tests workflow](../.github/workflows/database-tests.yml) runs on a standard Ubuntu 24.04 runner for changes to Supabase configuration, migrations, the database script, the application, tests or the toolchain. Review the **Database tests** check on the pull request or in the repository's **Actions** tab. Once the workflow is present on the default branch, use **Actions → Database tests → Run workflow** for a manual run.
+
+The job checks Docker, starts the local Supabase stack on the runner, reports container names and status, rebuilds the local database, runs pgTAP, generates `src/lib/supabase/database.types.ts` on the runner and runs TypeScript checking. The cleanup step runs after any failed step once Docker has been verified. All database operations use the runner's local stack and the job requires only read access to repository contents.
+
+Use the same commands to reproduce the job on a machine with Docker.
+
+```sh
+pnpm supabase:start
+pnpm supabase:status
+pnpm supabase:reset
+pnpm test:integration
+pnpm supabase:types
+pnpm typecheck
+pnpm supabase:stop
+```
+
+Run the stop command after an unsuccessful local run as well. The pgTAP smoke test checks PostgreSQL 17 and verifies that a new table receives no default CRUD grants for `anon` and `authenticated`. The probe rolls back.
 
 ## Environments
 

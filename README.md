@@ -39,6 +39,10 @@ curl -i http://localhost:8787/openapi.json
 | `pnpm test:integration` | Run local database integration tests with Docker.                                   |
 | `pnpm deploy`           | Publish the Worker to an authorized Cloudflare account when deployment is approved. |
 
+## Database validation
+
+The [Database tests workflow](.github/workflows/database-tests.yml) runs PostgreSQL 17 and pgTAP against a disposable Supabase stack on GitHub Actions when a push or pull request changes database, source, test or toolchain files. It also generates the local database types and type-checks them. See [the database guide](docs/DATABASE.md#automated-postgresql-validation) for the run and local reproduction instructions.
+
 ## HTTP API
 
 | Endpoint            | Response                                                                                                     |

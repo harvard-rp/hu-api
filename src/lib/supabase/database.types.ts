@@ -65,11 +65,87 @@ export type Database = {
           },
         ];
       };
+      character_reopen_requests: {
+        Row: {
+          archive_decision:
+            Database['private']['Enums']['validation_status'] | null;
+          archive_review_id: string;
+          character_id: string;
+          decided_at: string | null;
+          decided_by: string | null;
+          decision: string | null;
+          id: string;
+          justification: string | null;
+          player_id: string;
+          reason: string;
+          requested_at: string;
+          requested_revision: string;
+          resulting_revision: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          archive_decision?: never;
+          archive_review_id: string;
+          character_id: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          decision?: string | null;
+          id: string;
+          justification?: string | null;
+          player_id: string;
+          reason: string;
+          requested_at?: string;
+          requested_revision: string;
+          resulting_revision?: string | null;
+        };
+        Update: {
+          archive_decision?: never;
+          archive_review_id?: string;
+          character_id?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          decision?: string | null;
+          id?: string;
+          justification?: string | null;
+          player_id?: string;
+          reason?: string;
+          requested_at?: string;
+          requested_revision?: string;
+          resulting_revision?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'character_reopen_requests_character_id_archive_review_id_a_fkey';
+            columns: ['character_id', 'archive_review_id', 'archive_decision'];
+            isOneToOne: false;
+            referencedRelation: 'character_reviews';
+            referencedColumns: ['character_id', 'id', 'decision'];
+          },
+          {
+            foreignKeyName: 'character_reopen_requests_character_id_player_id_fkey';
+            columns: ['character_id', 'player_id'];
+            isOneToOne: false;
+            referencedRelation: 'characters';
+            referencedColumns: ['id', 'player_id'];
+          },
+          {
+            foreignKeyName: 'character_reopen_requests_decided_by_fkey';
+            columns: ['decided_by'];
+            isOneToOne: false;
+            referencedRelation: 'staff_actors';
+            referencedColumns: ['player_id'];
+          },
+        ];
+      };
       character_reviews: {
         Row: {
+          archived_character: boolean;
           assigned_house_id: string | null;
           character_id: string;
           decision: Database['private']['Enums']['validation_status'];
+          examined_external_url: string | null;
+          examined_revision: string | null;
+          external_attested: boolean;
           id: string;
           note: string | null;
           player_id: string;
@@ -78,9 +154,13 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          archived_character?: boolean;
           assigned_house_id?: string | null;
           character_id: string;
           decision: Database['private']['Enums']['validation_status'];
+          examined_external_url?: string | null;
+          examined_revision?: string | null;
+          external_attested?: boolean;
           id?: string;
           note?: string | null;
           player_id: string;
@@ -88,9 +168,13 @@ export type Database = {
           reviewer_id: string;
         };
         Update: {
+          archived_character?: boolean;
           assigned_house_id?: string | null;
           character_id?: string;
           decision?: Database['private']['Enums']['validation_status'];
+          examined_external_url?: string | null;
+          examined_revision?: string | null;
+          external_attested?: boolean;
           id?: string;
           note?: string | null;
           player_id?: string;
@@ -188,8 +272,10 @@ export type Database = {
       };
       characters: {
         Row: {
+          archived_at: string | null;
           created_at: string;
           current_review_id: string | null;
+          external_url: string | null;
           house_id: string | null;
           house_review_id: string | null;
           id: string;
@@ -197,15 +283,19 @@ export type Database = {
           kind: Database['private']['Enums']['character_kind'];
           player_id: string;
           program_id: string | null;
+          refusal_count: number;
           revision: string;
+          sheet_mode: Database['private']['Enums']['character_sheet_mode'];
           updated_at: string;
           use_status: Database['private']['Enums']['character_use_status'];
           validation_status: Database['private']['Enums']['validation_status'];
         };
         ComputedFields: never;
         Insert: {
+          archived_at?: string | null;
           created_at?: string;
           current_review_id?: string | null;
+          external_url?: string | null;
           house_id?: string | null;
           house_review_id?: string | null;
           id?: string;
@@ -213,14 +303,18 @@ export type Database = {
           kind: Database['private']['Enums']['character_kind'];
           player_id: string;
           program_id?: string | null;
+          refusal_count?: number;
           revision?: string;
+          sheet_mode?: Database['private']['Enums']['character_sheet_mode'];
           updated_at?: string;
           use_status?: Database['private']['Enums']['character_use_status'];
           validation_status?: Database['private']['Enums']['validation_status'];
         };
         Update: {
+          archived_at?: string | null;
           created_at?: string;
           current_review_id?: string | null;
+          external_url?: string | null;
           house_id?: string | null;
           house_review_id?: string | null;
           id?: string;
@@ -228,7 +322,9 @@ export type Database = {
           kind?: Database['private']['Enums']['character_kind'];
           player_id?: string;
           program_id?: string | null;
+          refusal_count?: number;
           revision?: string;
+          sheet_mode?: Database['private']['Enums']['character_sheet_mode'];
           updated_at?: string;
           use_status?: Database['private']['Enums']['character_use_status'];
           validation_status?: Database['private']['Enums']['validation_status'];
@@ -415,9 +511,11 @@ export type Database = {
     };
     Enums: {
       character_kind: 'student' | 'teacher' | 'staff_member' | 'citizen';
+      character_sheet_mode: 'inline' | 'external';
       character_use_status: 'active' | 'suspended';
       club_membership_status: 'active' | 'inactive';
-      staff_capability: 'characters.review' | 'boosts.manage';
+      staff_capability:
+        'characters.review' | 'boosts.manage' | 'characters.reopen';
       validation_status:
         'draft' | 'submitted' | 'changes_requested' | 'approved' | 'rejected';
     };
@@ -552,6 +650,16 @@ export type Database = {
     Functions: {
       bootstrap_discord_player: {
         Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      character_reopening: {
+        Args: {
+          after_id?: string;
+          args?: Json;
+          operation: string;
+          page_size?: number;
+          target_id?: string;
+        };
         Returns: Json;
       };
       current_player_context: {
@@ -713,9 +821,14 @@ export const Constants = {
   private: {
     Enums: {
       character_kind: ['student', 'teacher', 'staff_member', 'citizen'],
+      character_sheet_mode: ['inline', 'external'],
       character_use_status: ['active', 'suspended'],
       club_membership_status: ['active', 'inactive'],
-      staff_capability: ['characters.review', 'boosts.manage'],
+      staff_capability: [
+        'characters.review',
+        'boosts.manage',
+        'characters.reopen',
+      ],
       validation_status: [
         'draft',
         'submitted',

@@ -1,7 +1,7 @@
 import { createRoute, type z, type OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 
-import { characterBrowserCors, authenticatedBrowserCors } from '../config/cors';
+import { authenticatedBrowserCors } from '../config/cors';
 import {
   body,
   commonErrors,
@@ -41,6 +41,17 @@ const listRoute = createRoute({
   responses: {
     ...commonErrors,
     200: success(characterList, 'Owned character summaries in creation order.'),
+  },
+});
+const archivesRoute = createRoute({
+  ...read,
+  method: 'get',
+  path: '/api/v1/characters/archives',
+  operationId: 'listCharacterArchives',
+  summary: 'List the current player’s archived characters',
+  responses: {
+    ...commonErrors,
+    200: success(characterList, 'Owned archive summaries in creation order.'),
   },
 });
 const capacityRoute = createRoute({
@@ -91,7 +102,7 @@ const editRoute = createRoute({
   path: detailPath,
   operationId: 'editCharacterDraft',
   request: { query, params, body: body(editDraft) },
-  summary: 'Edit an owned draft or sheet awaiting corrections',
+  summary: 'Edit an owned draft, sheet in correction or unarchived refusal',
   description:
     'Supply the current revision and at least one editable field. Omit a field to preserve it, and use null to clear it.',
   responses: {
@@ -111,7 +122,7 @@ const submitRoute = createRoute({
   request: { query, params, body: body(submitDraft) },
   summary: 'Submit an owned character sheet for staff review',
   description:
-    'Requires the current revision, first and last names, personality, physical description, face claim and backstory. Students also require an active program.',
+    'Requires the current revision, mode, first and last names, age, birth date and face claim. Students need an active program. Teachers and staff members need an occupation. Inline sheets must meet editorial line limits. External sheets need an allowed viewing link.',
   responses: {
     ...commonErrors,
     200: success(characterDetail, 'The submitted sheet with a new revision.'),
@@ -138,11 +149,16 @@ function request<S extends z.ZodType>(
 }
 
 export function registerCharacterRoutes(app: OpenAPIHono<AppEnv>) {
-  app.use(`${characterPath}/*`, noStore, characterBrowserCors);
   app.openapi(
     listRoute,
     async (c) =>
       c.json(await request(c, characterList, { operation: 'list' }), 200),
+    invalid,
+  );
+  app.openapi(
+    archivesRoute,
+    async (c) =>
+      c.json(await request(c, characterList, { operation: 'archives' }), 200),
     invalid,
   );
   app.openapi(

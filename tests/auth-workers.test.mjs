@@ -28,6 +28,11 @@ const character = {
   revision: 'a0500000-0000-4000-8000-000000000001',
   kind: 'citizen',
   validationStatus: 'draft',
+  sheetMode: 'inline',
+  externalUrl: null,
+  refusalCount: 0,
+  archivedAt: null,
+  actions: { canEdit: true, canSubmit: true, canRequestReopening: false },
   useStatus: 'active',
   createdAt: '2026-11-27T12:00:00+00:00',
   updatedAt: '2026-11-27T12:00:00+00:00',
@@ -59,11 +64,16 @@ const review = {
   reviewedAt: '2026-11-27T12:00:00+00:00',
   comment: 'Synthetic player-facing comment',
   assignedHouseId: null,
+  examinedRevision: character.revision,
+  archivedCharacter: false,
+  externalEvidence: null,
 };
 const reviewOutcome = {
   characterId: character.id,
   revision: character.revision,
   houseId: null,
+  refusalCount: 0,
+  archivedAt: null,
   review,
 };
 

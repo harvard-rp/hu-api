@@ -4,6 +4,8 @@ import { secureHeaders } from 'hono/secure-headers';
 import {
   authenticatedBrowserCors,
   bootstrapBrowserCors,
+  characterBrowserCors,
+  staffReviewBrowserCors,
   browserCors,
 } from './config/cors';
 import { CharacterRequestError } from './lib/character-http';
@@ -11,6 +13,7 @@ import { errorBody } from './lib/http-contract';
 import { noStore } from './middleware/authentication';
 import { requestContext, type AppEnv } from './middleware/request-context';
 import { bootstrapRoute, postBootstrap } from './routes/bootstrap';
+import { registerCharacterReopeningRoutes } from './routes/character-reopening';
 import { registerCharacterReviewRoutes } from './routes/character-reviews';
 import { registerCharacterRoutes } from './routes/characters';
 import { healthRoute } from './routes/health';
@@ -64,6 +67,9 @@ export function createApp() {
   });
   app.openapi(meRoute, getMe);
   app.openapi(bootstrapRoute, postBootstrap);
+  app.use('/api/v1/characters/*', noStore, characterBrowserCors);
+  app.use('/api/v1/staff/characters/*', noStore, staffReviewBrowserCors);
+  registerCharacterReopeningRoutes(app);
   registerCharacterRoutes(app);
   registerCharacterReviewRoutes(app);
 

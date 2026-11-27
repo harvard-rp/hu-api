@@ -22,7 +22,14 @@ const rpText = (limit: number) => rpString(limit).nullable().optional();
 const rpList = (limit: number) =>
   z.array(rpString(limit)).max(12).nullable().optional();
 
+export const sheetMode = z.enum(['inline', 'external']);
+const externalUrl = z.string().max(2048).openapi({
+  description:
+    'An HTTPS viewing link for Canva, Google Docs or Google Sites. PostgreSQL validates the exact host and path.',
+});
 const editableFields = {
+  sheetMode: sheetMode.optional(),
+  externalUrl: externalUrl.nullable().optional(),
   firstName: rpText(80),
   lastName: rpText(80),
   nickname: rpText(80),
@@ -67,6 +74,14 @@ const summary = z.strictObject({
     'approved',
     'rejected',
   ]),
+  sheetMode,
+  refusalCount: z.number().int().nonnegative(),
+  archivedAt: z.iso.datetime({ offset: true }).nullable(),
+  actions: z.strictObject({
+    canEdit: z.boolean(),
+    canSubmit: z.boolean(),
+    canRequestReopening: z.boolean(),
+  }),
   useStatus: z.enum(['active', 'suspended']),
   revision: z.uuid(),
   createdAt: z.iso.datetime({ offset: true }),
@@ -79,6 +94,7 @@ const summary = z.strictObject({
 export const characterList = z.array(summary);
 export const characterDetail = summary.extend({
   houseId: z.uuid().nullable(),
+  externalUrl: externalUrl.nullable(),
   programId: z.uuid().nullable(),
   isScholarshipHolder: z.boolean().nullable(),
   age: z.number().int().min(0).max(32767).nullable(),

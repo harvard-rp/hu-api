@@ -13,9 +13,9 @@ Harvard University RP uses the Digital Campus to manage characters and campus se
 | Programs                       | The program list is extensible.                                                                                                | Houses, programs and clubs are editable catalogs with stable UUIDs and unique slugs.                                                                                            |
 | Social profiles and reputation | An RP Instagram profile belongs to a character. Reputation can increase or decrease, and the ranking is reserved for students. | These are requirements for later modules.                                                                                                                                       |
 
-## Approved HU-009F-A target
+## HU-009F character policy
 
-[Character policy](CHARACTER_POLICY.md) defines the hybrid sheet model, submission matrix proposal, editorial limits, state transitions, capacity and reopening proposal. Players choose inline authoring or a manually reviewed Canva, Google Docs or Google Sites link. Both modes retain structured fictional identity and campus reservation data.
+[Character policy](CHARACTER_POLICY.md) defines the hybrid sheet model, submission matrix, editorial limits, state transitions, capacity and reopening. Players choose inline authoring or a manually reviewed Canva, Google Docs or Google Sites link. Both modes retain structured fictional identity and campus reservation data.
 
 Correction and refusal require a player-facing comment. Only refusals increment the count. The first two allow revision and resubmission. The third archives the sheet and releases its slot. Archived sheets require explicit authorization and a free slot to reopen. All other states occupy capacity, including suspended characters unless archived. Total capacity remains five plus one per confirmed active boost. Preserve the full history and all existing character data.
 

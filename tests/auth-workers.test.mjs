@@ -54,6 +54,19 @@ const character = {
   rpLinks: null,
 };
 
+const review = {
+  decision: 'approved',
+  reviewedAt: '2026-11-27T12:00:00+00:00',
+  comment: 'Synthetic player-facing comment',
+  assignedHouseId: null,
+};
+const reviewOutcome = {
+  characterId: character.id,
+  revision: character.revision,
+  houseId: null,
+  review,
+};
+
 let configDir;
 let configPath;
 let origin;
@@ -127,11 +140,33 @@ async function simulateSupabase(request, response) {
   if (url === '/rest/v1/rpc/bootstrap_discord_player') {
     return json(200, { status: 'ok', context });
   }
-  if (url === '/rest/v1/rpc/player_characters') {
+  if (
+    [
+      '/rest/v1/rpc/player_characters',
+      '/rest/v1/rpc/staff_character_reviews',
+      '/rest/v1/rpc/player_character_review_history',
+    ].includes(url)
+  ) {
     let serialized = '';
     for await (const chunk of request.setEncoding('utf8')) serialized += chunk;
     const parameters = JSON.parse(serialized);
     requests.at(-1).parameters = parameters;
+    if (url === '/rest/v1/rpc/player_character_review_history') {
+      return json(200, { status: 'ok', data: [review] });
+    }
+    if (url === '/rest/v1/rpc/staff_character_reviews') {
+      if (scenario === 'review_denied')
+        return json(200, { status: 'forbidden' });
+      if (scenario === 'review_outage')
+        return json(503, { message: providerDetail, payload: parameters });
+      if (parameters.operation === 'queue')
+        return json(200, {
+          status: 'ok',
+          data: { items: [], nextCursor: null },
+        });
+      if (parameters.operation === 'decide')
+        return json(200, { status: 'ok', data: reviewOutcome });
+    }
     if (scenario === 'character_outage') {
       return json(503, { message: providerDetail, payload: parameters });
     }
@@ -468,6 +503,138 @@ it('redacts character content and provider details on a Data API failure', async
   expect(response.status).toBe(503);
   const requestId = response.headers.get('X-Request-Id');
   expect(await response.json()).toEqual({
+    error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'The character dependency is temporarily unavailable.',
+      requestId,
+    },
+  });
+  await vi.waitFor(() =>
+    expect(worker.logs.map(({ level, message }) => [level, message])).toEqual([
+      ['error', JSON.stringify({ requestId, status: 503 })],
+    ]),
+  );
+});
+
+const staffQueuePath = '/api/v1/staff/characters';
+const staffReviewPath = `${staffQueuePath}/${character.id}/reviews`;
+const ownerReviewPath = `${charactersPath}/${character.id}/reviews`;
+
+it('serves review pages and decisions through workerd using the verified JWT', async () => {
+  const page = await call(
+    worker,
+    `${staffQueuePath}?limit=10&after=${character.id}`,
+  );
+  expect(page.status).toBe(200);
+  expect(page.headers.get('Cache-Control')).toBe('no-store');
+  expect(await page.json()).toEqual({ items: [], nextCursor: null });
+  expect(requests.at(-1)).toMatchObject({
+    authorization: `Bearer ${validToken}`,
+    apikey: publishableKey,
+    parameters: { operation: 'queue', page_size: 10, after_id: character.id },
+  });
+
+  const decision = {
+    expectedRevision: character.revision,
+    decision: 'approved',
+    comment: review.comment,
+  };
+  const saved = await call(
+    worker,
+    staffReviewPath,
+    'POST',
+    validToken,
+    JSON.stringify(decision),
+  );
+  expect(saved.status).toBe(201);
+  expect(saved.headers.get('Cache-Control')).toBe('no-store');
+  expect(await saved.json()).toEqual(reviewOutcome);
+  expect(requests.at(-1).parameters).toEqual({
+    operation: 'decide',
+    target_id: character.id,
+    decision_input: decision,
+  });
+
+  const history = await call(worker, ownerReviewPath);
+  expect(history.status).toBe(200);
+  expect(history.headers.get('Cache-Control')).toBe('no-store');
+  expect(await history.json()).toEqual([review]);
+  expect(requests.at(-1)).toMatchObject({
+    url: '/rest/v1/rpc/player_character_review_history',
+    parameters: { target_id: character.id },
+  });
+});
+
+it.each([
+  ['GET', `${staffQueuePath}?limit=51`, undefined],
+  ['GET', `${staffQueuePath}?limit=20&limit=21`, undefined],
+  ['GET', `${staffQueuePath}?after=invalid`, undefined],
+  [
+    'POST',
+    staffReviewPath,
+    JSON.stringify({
+      decision: 'approved',
+      expectedRevision: character.revision,
+      reviewerId: character.id,
+    }),
+  ],
+  [
+    'POST',
+    staffReviewPath,
+    JSON.stringify({
+      decision: 'approved',
+      expectedRevision: character.revision,
+      comment: ' '.repeat(3),
+    }),
+  ],
+  [
+    'POST',
+    staffReviewPath,
+    JSON.stringify({
+      decision: 'approved',
+      expectedRevision: character.revision,
+      comment: 'x'.repeat(2001),
+    }),
+  ],
+])(
+  'rejects invalid %s review inputs before using the RPC',
+  async (method, path, payload) => {
+    const response = await call(worker, path, method, validToken, payload);
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect((await response.json()).error.code).toBe(
+      'INVALID_CHARACTER_REQUEST',
+    );
+    expect(requests.map(({ url }) => url)).toEqual(['/auth/v1/user']);
+  },
+);
+
+it('maps reviewer revocation and suppresses comment text in runtime logs', async () => {
+  scenario = 'review_denied';
+  const forbidden = await call(worker, staffQueuePath);
+  expect(forbidden.status).toBe(403);
+  expect((await forbidden.json()).error.code).toBe(
+    'CHARACTER_REVIEW_FORBIDDEN',
+  );
+  await vi.waitFor(() => expect(worker.logs).toHaveLength(1));
+  worker.logs.length = 0;
+
+  scenario = 'review_outage';
+  const payload = JSON.stringify({
+    decision: 'approved',
+    expectedRevision: character.revision,
+    comment: review.comment,
+  });
+  const unavailable = await call(
+    worker,
+    staffReviewPath,
+    'POST',
+    validToken,
+    payload,
+  );
+  expect(unavailable.status).toBe(503);
+  const requestId = unavailable.headers.get('X-Request-Id');
+  expect(await unavailable.json()).toEqual({
     error: {
       code: 'SERVICE_UNAVAILABLE',
       message: 'The character dependency is temporarily unavailable.',

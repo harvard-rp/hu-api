@@ -198,7 +198,7 @@ afterAll(() => {
     if (seeded)
       sql(`
       begin;
-      update private.characters set current_review_id = null, validation_status = 'draft'
+      update private.characters set current_review_id = null, house_review_id = null, house_id = null, validation_status = 'draft'
         where player_id in ('${actor.playerId}', '${teacher.playerId}');
       delete from private.character_reviews where reviewer_id = '${actor.playerId}';
       delete from private.character_sheets s using private.characters c
@@ -466,8 +466,8 @@ it('rejects a revoked session through both HTTP and PostgREST', async () => {
 });
 
 const charactersPath = '/api/v1/characters';
-const directCharacters = (token, parameters, schema = 'public') =>
-  globalThis.fetch(`${url}/rest/v1/rpc/player_characters`, {
+const directCharacterRpc = (rpc, token, parameters, schema = 'public') =>
+  globalThis.fetch(`${url}/rest/v1/rpc/${rpc}`, {
     method: 'POST',
     headers: {
       apikey: publishableKey,
@@ -479,6 +479,9 @@ const directCharacters = (token, parameters, schema = 'public') =>
     redirect: 'error',
     signal: globalThis.AbortSignal.timeout(10000),
   });
+
+const directCharacters = (...args) =>
+  directCharacterRpc('player_characters', ...args);
 
 it('writes and submits an owned sheet through real Auth and PostgREST', async () => {
   const created = await api(charactersPath, actorToken, 'POST', {
@@ -653,4 +656,203 @@ it('grants exactly one of six concurrent requests the last remaining slot', asyn
     used: capacity.total,
     available: 0,
   });
+}, 15000);
+
+const staffQueuePath = '/api/v1/staff/characters';
+const staffReviewPath = (id) => `${staffQueuePath}/${id}/reviews`;
+const ownerReviewPath = (id) => `${charactersPath}/${id}/reviews`;
+const directStaff = (...args) =>
+  directCharacterRpc('staff_character_reviews', ...args);
+const directReviewHistory = (...args) =>
+  directCharacterRpc('player_character_review_history', ...args);
+
+it('checks live reviewer authority and isolates direct review history', async () => {
+  const ownerFixture = randomUUID();
+  sql(`
+    update private.characters set validation_status = 'submitted' where id = '${actorCharacter}';
+    insert into private.characters (id, player_id, kind, validation_status, use_status)
+      values ('${ownerFixture}', '${teacher.playerId}', 'student', 'submitted', 'suspended');
+    insert into private.staff_capabilities (staff_actor_id, capability)
+      values ('${actor.playerId}', 'characters.review') on conflict do nothing;
+  `);
+  try {
+    expect((await api(staffQueuePath)).status).toBe(401);
+    expect((await api(staffQueuePath, teacherToken)).status).toBe(403);
+    expect((await directStaff(undefined, { operation: 'queue' })).ok).toBe(
+      false,
+    );
+    expect(
+      (
+        await directStaff(
+          actorToken,
+          { operation: 'queue' },
+          'character_review',
+        )
+      ).ok,
+    ).toBe(false);
+    expect(
+      await (await directStaff(teacherToken, { operation: 'queue' })).json(),
+    ).toEqual({ status: 'forbidden' });
+    const queue = await api(staffQueuePath, actorToken);
+    expect(queue.status).toBe(200);
+    expect(queue.headers.get('Cache-Control')).toBe('no-store');
+    const { items } = await queue.json();
+    expect(items.map(({ id }) => id)).toContain(ownerFixture);
+    expect(items.map(({ id }) => id)).not.toContain(actorCharacter);
+
+    const own = await api(`${charactersPath}/${actorCharacter}`, actorToken);
+    const ownRevision = (await own.json()).revision;
+    expect(
+      (
+        await api(staffReviewPath(actorCharacter), actorToken, 'POST', {
+          expectedRevision: ownRevision,
+          decision: 'approved',
+        })
+      ).status,
+    ).toBe(404);
+
+    const detail = await api(`${staffQueuePath}/${ownerFixture}`, actorToken);
+    expect(detail.status).toBe(200);
+    const draft = await detail.json();
+    const houses = await (
+      await api('/api/v1/catalogs/houses', actorToken)
+    ).json();
+    const [house] = houses;
+    const approve = {
+      decision: 'approved',
+      expectedRevision: draft.revision,
+      houseId: house.id,
+      comment: 'Fictional player-facing comment',
+    };
+    const result = await api(
+      staffReviewPath(ownerFixture),
+      actorToken,
+      'POST',
+      approve,
+    );
+    expect(result.status).toBe(201);
+    const recorded = await result.json();
+    expect(recorded).toEqual({
+      characterId: ownerFixture,
+      revision: expect.any(String),
+      houseId: house.id,
+      review: {
+        decision: 'approved',
+        reviewedAt: expect.any(String),
+        comment: approve.comment,
+        assignedHouseId: house.id,
+      },
+    });
+    expect(recorded.revision).not.toBe(draft.revision);
+
+    const ownHistory = await api(ownerReviewPath(ownerFixture), teacherToken);
+    expect(ownHistory.status).toBe(200);
+    expect(await ownHistory.json()).toEqual([recorded.review]);
+    expect(
+      await (
+        await directReviewHistory(teacherToken, { target_id: ownerFixture })
+      ).json(),
+    ).toEqual({ status: 'ok', data: [recorded.review] });
+    expect((await api(ownerReviewPath(ownerFixture), actorToken)).status).toBe(
+      404,
+    );
+    expect(
+      await (
+        await directReviewHistory(actorToken, { target_id: ownerFixture })
+      ).json(),
+    ).toEqual({ status: 'not_found' });
+    expect(
+      await (await api(staffReviewPath(ownerFixture), actorToken)).json(),
+    ).toEqual([recorded.review]);
+    expect(
+      (await api(`${staffQueuePath}/${ownerFixture}`, actorToken)).status,
+    ).toBe(404);
+
+    const me = await (await api('/api/v1/me', teacherToken)).json();
+    expect(me.characters).toContainEqual({
+      id: ownerFixture,
+      validationStatus: 'approved',
+      useStatus: 'suspended',
+      canAccessCampus: false,
+    });
+
+    sql(
+      `delete from private.staff_capabilities where staff_actor_id = '${actor.playerId}';`,
+    );
+    expect((await api(staffQueuePath, actorToken)).status).toBe(403);
+    expect(
+      await (
+        await directStaff(actorToken, {
+          operation: 'history',
+          target_id: ownerFixture,
+        })
+      ).json(),
+    ).toEqual({ status: 'forbidden' });
+  } finally {
+    sql(
+      `delete from private.staff_capabilities where staff_actor_id = '${actor.playerId}';`,
+    );
+  }
+});
+
+it('commits only one concurrent staff decision across HTTP and direct PostgREST', async () => {
+  const target = randomUUID();
+  const version = randomUUID();
+  sql(`
+    insert into private.characters (id, player_id, kind, validation_status, revision)
+      values ('${target}', '${teacher.playerId}', 'teacher', 'submitted', '${version}');
+    insert into private.staff_capabilities (staff_actor_id, capability)
+      values ('${actor.playerId}', 'characters.review') on conflict do nothing;
+  `);
+  try {
+    const decisions = await Promise.all([
+      api(staffReviewPath(target), actorToken, 'POST', {
+        expectedRevision: version,
+        decision: 'approved',
+      }),
+      directStaff(actorToken, {
+        operation: 'decide',
+        target_id: target,
+        decision_input: {
+          expectedRevision: version,
+          decision: 'rejected',
+          comment: 'Fictional example',
+        },
+      }),
+    ]);
+    const [http, direct] = decisions;
+    const directResult = await direct.json();
+    expect(direct.status).toBe(200);
+    if (http.status === 201) {
+      expect(directResult).toEqual({ status: 'not_submitted' });
+    } else {
+      expect(http.status).toBe(409);
+      expect((await http.json()).error.code).toBe('CHARACTER_NOT_SUBMITTED');
+      expect(directResult.status).toBe('ok');
+    }
+    const history = await (
+      await api(ownerReviewPath(target), teacherToken)
+    ).json();
+    expect(history).toHaveLength(1);
+    expect(history[0].decision).toBe(
+      http.status === 201 ? 'approved' : 'rejected',
+    );
+    const me = await (await api('/api/v1/me', teacherToken)).json();
+    expect(me.characters).toContainEqual({
+      id: target,
+      validationStatus: history[0].decision,
+      useStatus: 'active',
+      canAccessCampus: history[0].decision === 'approved',
+    });
+    const retired = await signIn(actor);
+    sql(`delete from auth.sessions where user_id = '${actor.authId}';`);
+    expect((await api(staffQueuePath, retired)).status).toBe(401);
+    expect(
+      await (await directStaff(retired, { operation: 'queue' })).json(),
+    ).toEqual({ status: 'unauthenticated' });
+  } finally {
+    sql(
+      `delete from private.staff_capabilities where staff_actor_id = '${actor.playerId}';`,
+    );
+  }
 }, 15000);

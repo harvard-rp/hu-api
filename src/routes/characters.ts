@@ -1,8 +1,20 @@
-import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
+import { createRoute, type z, type OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
-import { createMiddleware } from 'hono/factory';
 
+import { characterBrowserCors, authenticatedBrowserCors } from '../config/cors';
+import {
+  body,
+  commonErrors,
+  failureResponse,
+  invalid,
+  multipleFailures,
+  params,
+  query,
+  read,
+  requestCharacterData,
+  success,
+  write,
+} from '../lib/character-http';
 import {
   characterCapacity,
   characterCatalog,
@@ -13,177 +25,12 @@ import {
   editDraft,
   submitDraft,
 } from '../lib/character-sheet';
-import {
-  errorBody,
-  errorResponse,
-  internalErrorResponse,
-  requestIdHeader,
-} from '../lib/http-contract';
-import {
-  cacheControlHeader,
-  unauthenticatedResponse,
-} from '../lib/player-context';
-import { createSupabaseClient, runSupabaseQuery } from '../lib/supabase/client';
 import type { Database } from '../lib/supabase/database.types';
-import { authenticate, noStore } from '../middleware/authentication';
+import { noStore } from '../middleware/authentication';
 import type { AppEnv } from '../middleware/request-context';
-import { characterBrowserCors, authenticatedBrowserCors } from '../config/cors';
-
-const failures = {
-  invalid_request: [
-    400,
-    'INVALID_CHARACTER_REQUEST',
-    'Check the path, query parameters and JSON fields.',
-  ],
-  unauthenticated: [401, 'UNAUTHENTICATED', 'A valid session is required.'],
-  player_link_required: [
-    403,
-    'PLAYER_LINK_REQUIRED',
-    'A linked player account is required.',
-  ],
-  not_found: [404, 'CHARACTER_NOT_FOUND', 'Character not found.'],
-  capacity_reached: [
-    409,
-    'CHARACTER_CAPACITY_REACHED',
-    'All character slots are occupied.',
-  ],
-  character_locked: [
-    409,
-    'CHARACTER_LOCKED',
-    'Only drafts and sheets awaiting corrections can be changed or submitted.',
-  ],
-  revision_conflict: [
-    409,
-    'CHARACTER_REVISION_CONFLICT',
-    'The character changed. Reload the sheet and retry with its current revision.',
-  ],
-  too_large: [
-    413,
-    'CHARACTER_REQUEST_TOO_LARGE',
-    'The JSON body exceeds 96 KiB.',
-  ],
-  invalid_program: [
-    422,
-    'INVALID_CHARACTER_PROGRAM',
-    'Choose an active program permitted for this character type.',
-  ],
-  incomplete: [
-    422,
-    'CHARACTER_INCOMPLETE',
-    'Complete the required fields before submitting the sheet.',
-  ],
-  unavailable: [
-    503,
-    'SERVICE_UNAVAILABLE',
-    'The character dependency is temporarily unavailable.',
-  ],
-} as const;
-
-const rpcResult = z.discriminatedUnion('status', [
-  z.strictObject({ status: z.literal('ok'), data: z.unknown() }),
-  z.strictObject({
-    status: z.enum(Object.keys(failures) as (keyof typeof failures)[]),
-  }),
-]);
-
-export class CharacterRequestError extends Error {
-  constructor(readonly reason: keyof typeof failures) {
-    super('Character request failed.');
-  }
-
-  response(c: Context<AppEnv>) {
-    const [status, code, message] = failures[this.reason];
-    if (status === 401) c.header('WWW-Authenticate', 'Bearer');
-    return c.json(errorBody(c, code, message), status);
-  }
-}
-
-function protectedError<Code extends string>(code: Code, description: string) {
-  return { ...errorResponse(code, description), headers };
-}
-
-const headers = { ...requestIdHeader, ...cacheControlHeader };
-const failureResponse = <Reason extends keyof typeof failures>(
-  reason: Reason,
-) => protectedError(failures[reason][1], failures[reason][2]);
-
-const multipleFailures = (
-  first: keyof typeof failures,
-  second: keyof typeof failures,
-) => ({
-  description: [failures[first][2], failures[second][2]].join(' '),
-  headers,
-  content: {
-    'application/json': {
-      schema: z.object({
-        error: z.object({
-          code: z.enum([failures[first][1], failures[second][1]]),
-          message: z.string(),
-          requestId: z.uuid(),
-        }),
-      }),
-    },
-  },
-});
-
-const commonErrors = {
-  400: failureResponse('invalid_request'),
-  401: unauthenticatedResponse,
-  403: failureResponse('player_link_required'),
-  503: failureResponse('unavailable'),
-  500: { ...internalErrorResponse, headers },
-};
-const query = z.strictObject({});
-const params = z.strictObject({ characterId: z.uuid() });
-const security = [{ SupabaseBearer: [] }];
-const read = {
-  security,
-  middleware: [authenticate],
-  request: { query },
-};
-
-const maxBodyBytes = 96 * 1024;
-const requireJson = createMiddleware<AppEnv>(async (c, next) => {
-  if (
-    c.req.header('Content-Type')?.split(';')[0]?.trim().toLowerCase() !==
-    'application/json'
-  ) {
-    throw new CharacterRequestError('invalid_request');
-  }
-  try {
-    await c.req.json();
-  } catch {
-    throw new CharacterRequestError('invalid_request');
-  }
-  await next();
-});
-const write = {
-  security,
-  middleware: [
-    authenticate,
-    bodyLimit({
-      maxSize: maxBodyBytes,
-      onError: (c) => new CharacterRequestError('too_large').response(c),
-    }),
-    requireJson,
-  ],
-};
 
 const characterPath = '/api/v1/characters';
 const detailPath = '/api/v1/characters/{characterId}';
-
-const json = <S extends z.ZodType>(schema: S) => ({
-  'application/json': { schema },
-});
-const success = <S extends z.ZodType>(schema: S, description: string) => ({
-  description,
-  headers,
-  content: json(schema),
-});
-const body = <S extends z.ZodType>(schema: S) => ({
-  content: json(schema),
-  required: true,
-});
 
 const listRoute = createRoute({
   ...read,
@@ -278,38 +125,16 @@ const submitRoute = createRoute({
 type CharacterArguments =
   Database['public']['Functions']['player_characters']['Args'];
 type Catalog = 'houses' | 'programs' | 'clubs';
-async function request<S extends z.ZodType>(
+function request<S extends z.ZodType>(
   c: Context<AppEnv>,
   schema: S,
   input: CharacterArguments | { catalog: Catalog },
-): Promise<z.output<S>> {
-  const auth = c.var.auth;
-  if (!auth) throw new CharacterRequestError('unauthenticated');
-  let result;
-  try {
-    const client = createSupabaseClient(c.env, {
-      accessToken: auth.accessToken,
-    });
-    const query =
-      'catalog' in input
-        ? client.rpc('player_character_catalog', input)
-        : client.rpc('player_characters', input);
-    result = rpcResult.parse(
-      await runSupabaseQuery(() =>
-        query.abortSignal(AbortSignal.timeout(5000)),
-      ),
-    );
-  } catch {
-    throw new CharacterRequestError('unavailable');
-  }
-  if (result.status !== 'ok') throw new CharacterRequestError(result.status);
-  const data = schema.safeParse(result.data);
-  if (!data.success) throw new CharacterRequestError('unavailable');
-  return data.data;
-}
-
-function invalid(result: { success: boolean }): undefined {
-  if (!result.success) throw new CharacterRequestError('invalid_request');
+) {
+  return requestCharacterData(c, schema, (client) =>
+    'catalog' in input
+      ? client.rpc('player_character_catalog', input)
+      : client.rpc('player_characters', input),
+  );
 }
 
 export function registerCharacterRoutes(app: OpenAPIHono<AppEnv>) {

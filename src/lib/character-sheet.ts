@@ -7,7 +7,7 @@ export const characterKind = z.enum([
   'citizen',
 ]);
 
-const rpString = (limit: number) =>
+export const rpString = (limit: number) =>
   z
     .string()
     .refine(

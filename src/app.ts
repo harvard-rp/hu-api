@@ -6,14 +6,13 @@ import {
   bootstrapBrowserCors,
   browserCors,
 } from './config/cors';
+import { CharacterRequestError } from './lib/character-http';
 import { errorBody } from './lib/http-contract';
 import { noStore } from './middleware/authentication';
 import { requestContext, type AppEnv } from './middleware/request-context';
 import { bootstrapRoute, postBootstrap } from './routes/bootstrap';
-import {
-  CharacterRequestError,
-  registerCharacterRoutes,
-} from './routes/characters';
+import { registerCharacterReviewRoutes } from './routes/character-reviews';
+import { registerCharacterRoutes } from './routes/characters';
 import { healthRoute } from './routes/health';
 import { getMe, meRoute } from './routes/me';
 import { openApiConfig, openApiRoute } from './routes/openapi';
@@ -66,6 +65,7 @@ export function createApp() {
   app.openapi(meRoute, getMe);
   app.openapi(bootstrapRoute, postBootstrap);
   registerCharacterRoutes(app);
+  registerCharacterReviewRoutes(app);
 
   return app;
 }

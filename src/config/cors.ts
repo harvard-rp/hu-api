@@ -52,3 +52,8 @@ export const characterBrowserCors = createBrowserCors(
   'GET, POST, PATCH',
   'Authorization, Content-Type',
 );
+
+export const staffReviewBrowserCors = createBrowserCors(
+  'GET, POST',
+  'Authorization, Content-Type',
+);

@@ -64,7 +64,7 @@ Every response carries a server-generated `X-Request-Id`. Unregistered routes re
 }
 ```
 
-The [player character and catalog API](docs/CHARACTERS.md) documents the HU-009A routes and the provisional development policy.
+The [player character and catalog API](docs/CHARACTERS.md) documents the HU-009A routes. [Character reviews](docs/CHARACTER_REVIEWS.md) covers the HU-009B staff queue, decisions and owner history.
 
 ## Environment
 

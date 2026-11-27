@@ -23,6 +23,10 @@ A character uses one of `active` and `suspended` independently of validation. He
 
 The [character lifecycle](CHARACTERS.md) uses the existing player, profile and sheet records. During development every existing character occupies one slot, including drafts, refused characters and suspended characters. Owners may edit and submit drafts and sheets awaiting corrections. Submitted, approved and refused sheets are locked. Boost loss preserves all data and use states. The field matrix and transition rules in HU-009A await staff approval before release.
 
+## HU-009B development policy
+
+[Staff review](CHARACTER_REVIEWS.md) applies the provisional submitted-only workflow. An authorized HRP actor can append an approval, correction request or rejection for another player's sheet. Corrections and rejections include a player-facing comment. An authorized student approval or correction request can assign an active House. A later decision may preserve an existing assignment and its review reference. Validation and use status remain independent. The transition and visibility policy awaits staff approval.
+
 ## Open decisions
 
 - Which validation or use states consume a character slot, how excess characters are selected, timing and reactivation, and boost exceptions.

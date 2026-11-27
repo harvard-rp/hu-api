@@ -33,3 +33,7 @@ Version the server reference catalogs in migrations and keep synthetic test data
 ## HU-005 — Verified bearer identity and bounded player context
 
 Use the configured project's Supabase Auth service to verify the request token before reading player data. A separate Data API client keeps the caller's JWT and publishable key. Authorize in PostgreSQL through a parameterless invoker-rights RPC with column privileges and ownership policies. Resolve HRP grants from the private capability table on each read. The HTTP contract is limited to `GET /api/v1/me`. See [authentication](AUTHENTICATION.md) and [permissions](PERMISSIONS.md).
+
+## HU-007A — Verified Discord identity and insert-only bootstrap
+
+Read the account ID from the Discord identity managed by Supabase Auth. Revalidate session and identity for the write path. Preserve conflicts for operator review and let unique keys arbitrate concurrent requests without updating existing players. A restricted, non-login function owner performs the insert and the facade projects the existing player context with invoker permissions. See [Discord bootstrap](DISCORD_AUTH.md).

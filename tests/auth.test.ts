@@ -316,3 +316,173 @@ describe('GET /api/v1/me with simulated Auth and Data API responses', () => {
     expect(denied.headers.has('Access-Control-Allow-Origin')).toBe(false);
   });
 });
+
+describe('POST /api/v1/auth/bootstrap with simulated dependencies', () => {
+  const path = '/api/v1/auth/bootstrap';
+
+  function simulateBootstrap(
+    data: Response,
+    authResponse = Response.json({ id: userId, is_anonymous: false }),
+  ) {
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (input, init) => {
+        const target = new URL(String(input));
+        expect(target.origin).toBe(origin);
+        if (target.pathname === '/auth/v1/user') return authResponse.clone();
+        expect(target.pathname).toBe('/rest/v1/rpc/bootstrap_discord_player');
+        expect(init?.method).toBe('POST');
+        expect(init?.body).toBe('{}');
+        expect(new Headers(init?.headers).get('Authorization')).toBe(
+          `Bearer ${token}`,
+        );
+        expect(init?.redirect).toBe('error');
+        return data;
+      });
+    const token = jwt();
+    vi.stubGlobal('fetch', transport);
+    return { transport, headers: { Authorization: `Bearer ${token}` } };
+  }
+
+  it('returns the shared player context with no caching', async () => {
+    const { headers, transport } = simulateBootstrap(
+      Response.json({ status: 'ok', context: context() }),
+    );
+    const response = await createApp().request(
+      path,
+      { method: 'POST', headers },
+      bindings,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(await response.json()).toEqual(context());
+    expect(transport).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['discord_identity_required', 403, 'DISCORD_IDENTITY_REQUIRED'],
+    ['identity_link_conflict', 409, 'IDENTITY_LINK_CONFLICT'],
+    ['unauthenticated', 401, 'UNAUTHENTICATED'],
+  ])(
+    'maps the database outcome %s to the public contract',
+    async (status, code, error) => {
+      const { headers } = simulateBootstrap(Response.json({ status }));
+      const response = await createApp().request(
+        path,
+        { method: 'POST', headers },
+        bindings,
+      );
+      expect(response.status).toBe(code);
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+      expect(await response.json()).toMatchObject({
+        error: { code: error, requestId: response.headers.get('X-Request-Id') },
+      });
+      if (code === 401)
+        expect(response.headers.get('WWW-Authenticate')).toBe('Bearer');
+    },
+  );
+
+  it('fails closed for an expired token or missing Bearer credentials', async () => {
+    const { transport } = simulateBootstrap(
+      Response.json({ status: 'ok', context: context() }),
+    );
+    const app = createApp();
+    expect((await app.request(path, { method: 'POST' }, bindings)).status).toBe(
+      401,
+    );
+    const expired = await app.request(
+      path,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${jwt({ exp: 1 })}` },
+      },
+      bindings,
+    );
+    expect(expired.status).toBe(401);
+    expect(transport).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects caller-supplied targets without invoking the RPC', async () => {
+    const { headers, transport } = simulateBootstrap(
+      Response.json({ status: 'ok', context: context() }),
+    );
+    const app = createApp();
+    const body = await app.request(
+      path,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ discord_id: '123', playerId: secondPlayerId }),
+      },
+      bindings,
+    );
+    const query = await app.request(
+      `${path}?playerId=${secondPlayerId}`,
+      { method: 'POST', headers },
+      bindings,
+    );
+    expect(body.status).toBe(400);
+    expect(query.status).toBe(400);
+    expect(transport).toHaveBeenCalledTimes(2);
+    for (const [input] of transport.mock.calls)
+      expect(new URL(String(input)).pathname).toBe('/auth/v1/user');
+  });
+
+  it('hides dependency errors and rejects unexpected sensitive response fields', async () => {
+    const app = createApp();
+    for (const upstream of [
+      Response.json({ message: 'upstream-private-detail' }, { status: 500 }),
+      Response.json({
+        status: 'ok',
+        context: { ...context(), discordId: 'upstream-private-detail' },
+      }),
+    ]) {
+      const { headers } = simulateBootstrap(upstream);
+      const response = await app.request(
+        path,
+        { method: 'POST', headers },
+        bindings,
+      );
+      expect(response.status).toBe(503);
+      expect(await response.text()).not.toContain('upstream-private-detail');
+    }
+  });
+
+  it('permits only the needed method and header on the existing origin allowlist', async () => {
+    const app = createApp();
+    for (const sender of [
+      'https://campus.example',
+      'https://outside.example',
+    ]) {
+      const response = await app.request(
+        path,
+        {
+          method: 'OPTIONS',
+          headers: {
+            Origin: sender,
+            'Access-Control-Request-Method': 'POST',
+            'Access-Control-Request-Headers': 'Authorization',
+          },
+        },
+        bindings,
+      );
+      if (sender === 'https://campus.example') {
+        expect(response.status).toBe(204);
+        expect(response.headers.get('Access-Control-Allow-Methods')).toBe(
+          'POST',
+        );
+        expect(response.headers.get('Access-Control-Allow-Headers')).toBe(
+          'Authorization',
+        );
+        expect(response.headers.get('Access-Control-Allow-Origin')).toBe(
+          sender,
+        );
+      } else {
+        expect(response.headers.has('Access-Control-Allow-Origin')).toBe(false);
+      }
+      expect(response.headers.has('Access-Control-Allow-Credentials')).toBe(
+        false,
+      );
+    }
+  });
+});

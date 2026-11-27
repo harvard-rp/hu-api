@@ -45,11 +45,12 @@ The [Database tests workflow](.github/workflows/database-tests.yml) runs Postgre
 
 ## HTTP API
 
-| Endpoint            | Response                                                                                                     |
-| ------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `GET /health`       | HTTP 200 with `{"status":"ok","service":"hu-api"}`. This checks liveness independently of external services. |
-| `GET /api/v1/me`    | The current player context. Requires a Supabase Auth bearer token.                                           |
-| `GET /openapi.json` | HTTP 200 with the OpenAPI 3.0.3 document.                                                                    |
+| Endpoint                      | Response                                                                                                     |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `GET /health`                 | HTTP 200 with `{"status":"ok","service":"hu-api"}`. This checks liveness independently of external services. |
+| `POST /api/v1/auth/bootstrap` | Initialize or retrieve the current player using their linked Discord identity.                               |
+| `GET /api/v1/me`              | The current player context. Requires a Supabase Auth bearer token.                                           |
+| `GET /openapi.json`           | HTTP 200 with the OpenAPI 3.0.3 document.                                                                    |
 
 Every response carries a server-generated `X-Request-Id`. Unregistered routes return HTTP 404 with the following JSON structure. Unexpected failures use the same structure with HTTP 500, code `INTERNAL_ERROR` and a generic message.
 
@@ -73,7 +74,7 @@ Future domain routes will live under `/api/v1`.
 
 Use `cp .dev.vars.example .dev.vars` to configure a local frontend origin and restart Wrangler after editing. A blank setting or any invalid entry results in an empty allowlist. The public paths permit cross-origin GET requests from approved origins, expose `X-Request-Id` and support preflight without credentials or custom request headers. Same-origin and direct HTTP clients can call the public endpoints with the default configuration.
 
-Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` in your ignored `.dev.vars` when working on routes that query Supabase. Both variables are required for `/api/v1/me`. [Authentication](docs/AUTHENTICATION.md) · [Database setup](docs/DATABASE.md)
+Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` in your ignored `.dev.vars` when working on routes that query Supabase. Both variables are required for authenticated endpoints. [Authentication](docs/AUTHENTICATION.md) · [Database setup](docs/DATABASE.md)
 
 ## Code layout
 

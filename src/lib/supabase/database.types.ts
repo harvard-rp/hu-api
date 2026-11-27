@@ -544,6 +544,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      bootstrap_discord_player: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
       current_player_context: {
         Args: Record<PropertyKey, never>;
         Returns: Json;

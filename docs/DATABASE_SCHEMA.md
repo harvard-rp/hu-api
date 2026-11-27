@@ -1,6 +1,6 @@
 # Database schema
 
-HU-004 uses PostgreSQL 17. `public` holds catalogs and basic RP profile fields that may be considered for future publication. `private` holds identities, detailed sheets, HRP actor records and operational data. All domain tables enable RLS. HU-005 adds a single invoker-rights RPC in `public`, with column-scoped grants and policies on three private tables. The Data API exposes only `public`. The generated TypeScript file also describes `private` for trusted code. See [Permissions](PERMISSIONS.md) for the client access boundary.
+HU-004 uses PostgreSQL 17. `public` holds catalogs and basic RP profile fields that may be considered for future publication. `private` holds identities, detailed sheets, HRP actor records and operational data. All domain tables enable RLS. HU-005 adds the context-read RPC in `public`. HU-007A adds a write facade for Discord-linked account initialization with its privileged implementation in the unexposed `account_bootstrap` schema. The Data API exposes only `public`. The generated TypeScript file also describes `private` for trusted code. See [Permissions](PERMISSIONS.md) for the client access boundary.
 
 ## Entity relationships
 
@@ -29,6 +29,7 @@ erDiagram
 | `private.players`                                  | UUID identity, canonical unsigned 64-bit Discord snowflake stored as text, optional unique `auth.users` link. Removing the external Auth user clears the link.                                         |
 | `private.staff_actors`                             | Independently registered HRP actors. Playing a `staff_member` does not create an actor record. Functional capabilities are granted separately by a trusted operator.                                   |
 | `private.staff_capabilities`                       | Effective grants per actor, limited to known capability codes.                                                                                                                                         |
+| `public.bootstrap_discord_player()`                | Initializes the current player from an eligible Auth identity and returns the current authorization context.                                                                                           |
 | `public.current_player_context()`                  | Invoker-rights RPC returning only the linked caller’s player ID, capabilities, and owned character states.                                                                                             |
 | `private.boost_confirmations`                      | An absolute count, source, actor, reason and timestamp per confirmation. Trusted writers append a row for each change. The identity revision orders entries, including entries that share a timestamp. |
 | `private.player_slot_capacity`                     | Invoker-rights view calculating five plus the latest confirmed count. It accesses no unaudited Discord data. There is no capacity-based trigger on character writes while counted states remain open.  |
@@ -58,5 +59,6 @@ Keep reviews and boost confirmations as historical records. Clients have no perm
 | `20261126231852_club_memberships.sql`             | Membership state, reservations, duplicate prevention and capacity integrity.                  |
 | `20261126231853_reference_catalogs.sql`           | The 12 Houses, 15 programs and 33 clubs and organizations from the server reference catalogs. |
 | `20261126235738_player_context_authorization.sql` | HRP capability grants, RLS policies and the bounded current-player RPC.                       |
+| `20261127002939_bootstrap_discord_player.sql`     | Scoped Auth read policies, dedicated function owner and transactional Discord bootstrap.      |
 
 Reference catalog data is versioned in migrations so it is available wherever the schema is built. Test fixtures are synthetic and live in rollback-only pgTAP transactions or in isolated concurrency probes that clean up their own data. See [business rules](BUSINESS_RULES.md) for unresolved policy decisions.

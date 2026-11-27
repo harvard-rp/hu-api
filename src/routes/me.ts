@@ -1,4 +1,4 @@
-import { createRoute, z, type RouteHandler } from '@hono/zod-openapi';
+import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 
 import {
   errorBody,
@@ -6,36 +6,15 @@ import {
   internalErrorResponse,
   requestIdHeader,
 } from '../lib/http-contract';
+import {
+  cacheControlHeader,
+  playerContextResponse,
+  playerContextSchema,
+  unauthenticatedResponse,
+} from '../lib/player-context';
 import { createSupabaseClient, runSupabaseQuery } from '../lib/supabase/client';
 import { authenticate } from '../middleware/authentication';
 import type { AppEnv } from '../middleware/request-context';
-
-const playerContextSchema = z.strictObject({
-  playerId: z.uuid(),
-  capabilities: z.array(z.enum(['characters.review', 'boosts.manage'])),
-  characters: z.array(
-    z.strictObject({
-      id: z.uuid(),
-      validationStatus: z.enum([
-        'draft',
-        'submitted',
-        'changes_requested',
-        'approved',
-        'rejected',
-      ]),
-      useStatus: z.enum(['active', 'suspended']),
-      canAccessCampus: z.boolean(),
-    }),
-  ),
-  canAccessCampus: z.boolean(),
-});
-
-const cacheControlHeader = {
-  'Cache-Control': {
-    description: 'The response must never be stored.',
-    schema: { type: 'string' as const, enum: ['no-store'] },
-  },
-};
 
 export const meRoute = createRoute({
   method: 'get',
@@ -45,23 +24,8 @@ export const meRoute = createRoute({
   security: [{ SupabaseBearer: [] }],
   middleware: [authenticate] as const,
   responses: {
-    200: {
-      description:
-        'The linked player and their current capabilities and character eligibility.',
-      headers: { ...requestIdHeader, ...cacheControlHeader },
-      content: { 'application/json': { schema: playerContextSchema } },
-    },
-    401: {
-      ...errorResponse(
-        'UNAUTHENTICATED',
-        'A valid Supabase Auth access token is required.',
-      ),
-      headers: {
-        ...requestIdHeader,
-        ...cacheControlHeader,
-        'WWW-Authenticate': { schema: { type: 'string', enum: ['Bearer'] } },
-      },
-    },
+    200: playerContextResponse,
+    401: unauthenticatedResponse,
     403: {
       ...errorResponse(
         'PLAYER_LINK_REQUIRED',

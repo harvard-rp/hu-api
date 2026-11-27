@@ -60,5 +60,6 @@ Keep reviews and boost confirmations as historical records. Clients have no perm
 | `20261126231853_reference_catalogs.sql`           | The 12 Houses, 15 programs and 33 clubs and organizations from the server reference catalogs. |
 | `20261126235738_player_context_authorization.sql` | HRP capability grants, RLS policies and the bounded current-player RPC.                       |
 | `20261127002939_bootstrap_discord_player.sql`     | Scoped Auth read policies, dedicated function owner and transactional Discord bootstrap.      |
+| `20261127085714_restrict_discord_signups.sql`     | Private Discord signup allowlist and Before User Created hook.                                |
 
 Reference catalog data is versioned in migrations so it is available wherever the schema is built. Test fixtures are synthetic and live in rollback-only pgTAP transactions or in isolated concurrency probes that clean up their own data. See [business rules](BUSINESS_RULES.md) for unresolved policy decisions.

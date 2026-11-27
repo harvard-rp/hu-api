@@ -34,6 +34,12 @@
     "enable_signup": false,
     "enable_anonymous_sign_ins": false,
     "enable_manual_linking": false,
+    "hook": {
+      "before_user_created": {
+        "enabled": true,
+        "uri": "pg-functions://postgres/signup_guard/before_user_created",
+      },
+    },
     "external": {},
   },
   "local_smtp": {

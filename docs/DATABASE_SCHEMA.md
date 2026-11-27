@@ -1,6 +1,6 @@
 # Database schema
 
-HU-004 uses PostgreSQL 17. `public` holds catalogs and basic RP profile fields that may be considered for future publication. `private` holds identities, detailed sheets, HRP actor records and operational data. All domain tables enable RLS. HU-005 adds the context-read RPC in `public`. HU-007A adds a write facade for Discord-linked account initialization with its privileged implementation in the unexposed `account_bootstrap` schema. The Data API exposes only `public`. The generated TypeScript file also describes `private` for trusted code. See [Permissions](PERMISSIONS.md) for the client access boundary.
+HU-004 uses PostgreSQL 17. `public` holds catalogs and basic RP profile fields that may be considered for future publication. `private` holds identities, detailed sheets, HRP actor records and operational data. All domain tables enable RLS. HU-005 adds the context-read RPC in `public`. HU-007A adds a write facade for Discord-linked account initialization with its privileged implementation in the unexposed `account_bootstrap` schema. HU-009B adds bounded staff-review and owner-history facades in `public` backed by the unexposed `character_review` schema. The Data API exposes only `public`. The generated TypeScript file also describes `private` for trusted code. See [Permissions](PERMISSIONS.md) for the client access boundary.
 
 ## Entity relationships
 
@@ -40,7 +40,7 @@ erDiagram
 | `public.houses`, `public.programs`, `public.clubs` | Catalogs with stable UUIDs, slugs and activation flags. The seeded BDE identity and slug are tied to a capacity of ten.                                                                                                 |
 | `private.club_memberships`                         | One row per character and club, with join time, use state, optional responsibility and active seat reservations.                                                                                                        |
 
-Keep reviews and boost confirmations as historical records. Clients have no permission path to write history. A later trusted writer should append a decision and update the character's current reference in one transaction. The current decision and current House can refer to different reviews. Approval and House assignment are validated by ordinary foreign keys and checks. Existing timestamp triggers maintain `updated_at`. HU-009A also rotates character revisions and locks capacity when a boost confirmation is appended. See the [character lifecycle](CHARACTERS.md#policy-and-concurrency) for the shared transaction lock and write contract.
+Keep reviews and boost confirmations as historical records. Clients have no direct write grant on history tables. The bounded staff review operation appends a decision and updates the character's current reference in one transaction. The current decision and current House can refer to different reviews. Approval and House assignment are validated by ordinary foreign keys and checks. Existing timestamp triggers maintain `updated_at`. HU-009A also rotates character revisions and locks capacity when a boost confirmation is appended. See the [character lifecycle](CHARACTERS.md#policy-and-concurrency) for the shared transaction lock and write contract.
 
 ## Club membership transactions
 
@@ -52,15 +52,16 @@ Keep reviews and boost confirmations as historical records. Clients have no perm
 
 ## Migrations
 
-| File                                              | Contents                                                                                      |
-| ------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `20261126231849_domain_identity_and_catalogs.sql` | Schemas, player identity, HRP actors, boost confirmations, capacity view and catalog tables.  |
-| `20261126231850_characters_and_reviews.sql`       | Character records, profiles, sheets and review history.                                       |
-| `20261126231852_club_memberships.sql`             | Membership state, reservations, duplicate prevention and capacity integrity.                  |
-| `20261126231853_reference_catalogs.sql`           | The 12 Houses, 15 programs and 33 clubs and organizations from the server reference catalogs. |
-| `20261126235738_player_context_authorization.sql` | HRP capability grants, RLS policies and the bounded current-player RPC.                       |
-| `20261127002939_bootstrap_discord_player.sql`     | Scoped Auth read policies, dedicated function owner and transactional Discord bootstrap.      |
-| `20261127085714_restrict_discord_signups.sql`     | Private Discord signup allowlist and Before User Created hook.                                |
-| `20261127120000_character_lifecycle.sql`          | Character revisions, bounded player and catalog RPCs, RLS policies and the capacity lock.     |
+| File                                              | Contents                                                                                               |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `20261126231849_domain_identity_and_catalogs.sql` | Schemas, player identity, HRP actors, boost confirmations, capacity view and catalog tables.           |
+| `20261126231850_characters_and_reviews.sql`       | Character records, profiles, sheets and review history.                                                |
+| `20261126231852_club_memberships.sql`             | Membership state, reservations, duplicate prevention and capacity integrity.                           |
+| `20261126231853_reference_catalogs.sql`           | The 12 Houses, 15 programs and 33 clubs and organizations from the server reference catalogs.          |
+| `20261126235738_player_context_authorization.sql` | HRP capability grants, RLS policies and the bounded current-player RPC.                                |
+| `20261127002939_bootstrap_discord_player.sql`     | Scoped Auth read policies, dedicated function owner and transactional Discord bootstrap.               |
+| `20261127085714_restrict_discord_signups.sql`     | Private Discord signup allowlist and Before User Created hook.                                         |
+| `20261127120000_character_lifecycle.sql`          | Character revisions, bounded player and catalog RPCs, RLS policies and the capacity lock.              |
+| `20261127130000_character_review.sql`             | Bounded staff and owner review RPCs, a restricted reviewer role and indexes for the queue and history. |
 
 Reference catalog data is versioned in migrations so it is available wherever the schema is built. Test fixtures are synthetic and live in rollback-only pgTAP transactions or in isolated concurrency probes that clean up their own data. See [business rules](BUSINESS_RULES.md) for unresolved policy decisions.

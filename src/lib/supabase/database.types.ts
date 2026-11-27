@@ -559,11 +559,25 @@ export type Database = {
         Returns: Json;
       };
       player_character_catalog: { Args: { catalog: string }; Returns: Json };
+      player_character_review_history: {
+        Args: { target_id: string };
+        Returns: Json;
+      };
       player_characters: {
         Args: {
           expected_revision?: string;
           fields?: Json;
           operation: string;
+          target_id?: string;
+        };
+        Returns: Json;
+      };
+      staff_character_reviews: {
+        Args: {
+          after_id?: string;
+          decision_input?: Json;
+          operation: string;
+          page_size?: number;
           target_id?: string;
         };
         Returns: Json;

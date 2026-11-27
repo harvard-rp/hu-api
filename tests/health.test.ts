@@ -80,8 +80,12 @@ describe('hu-api', () => {
       '/api/v1/characters',
       '/api/v1/characters/capacity',
       '/api/v1/characters/{characterId}',
+      '/api/v1/characters/{characterId}/reviews',
       '/api/v1/characters/{characterId}/submit',
       '/api/v1/me',
+      '/api/v1/staff/characters',
+      '/api/v1/staff/characters/{characterId}',
+      '/api/v1/staff/characters/{characterId}/reviews',
       '/health',
       '/openapi.json',
     ]);

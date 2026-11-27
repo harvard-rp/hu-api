@@ -9,7 +9,7 @@
 | Linked player with a suspended or unapproved character | The account context remains accessible. The character is ineligible for campus access.                                              |
 | HRP actor                                              | Only the capability rows explicitly granted for their linked player. The context still contains solely their own characters.        |
 
-`characters.review` and `boosts.manage` are initial capability codes. They record authorization intent for later workflows. Clients can [initialize the current player](DISCORD_AUTH.md) and run the bounded [player character lifecycle](CHARACTERS.md). Permission and review writes remain restricted to trusted operators. An RP type such as `teacher` or `staff_member` conveys no HRP authority. The existing character review constraint prevents self-review.
+`characters.review` and `boosts.manage` are initial capability codes. `characters.review` controls access to the review workflow. `boosts.manage` is reserved for a later workflow. Clients can [initialize the current player](DISCORD_AUTH.md) and run the bounded [player character lifecycle](CHARACTERS.md). Permission grants remain restricted to trusted operators. Authorized HRP actors can append decisions through the bounded review workflow. An RP type such as `teacher` or `staff_member` conveys no HRP authority. The existing character review constraint prevents self-review.
 
 ## PostgreSQL boundary
 
@@ -27,7 +27,13 @@ The invoker facade `public.bootstrap_discord_player()` delegates the write to `a
 
 `public.player_characters()` and `public.player_character_catalog()` are authenticated invoker facades for the bounded functions in the unexposed `character_lifecycle` schema. The dedicated `hu_character_lifecycle` owner has no login or RLS bypass. Session reads are scoped to the Auth subject. Per-table RLS binds character, profile, sheet and capacity access to that subject's player link. Catalog RLS exposes active rows to the function owner.
 
-Direct callers and Worker requests share the same ownership, session, field and transition checks. Client roles have no table grants for profile or sheet access. An RP character kind conveys no HRP capabilities. The character writer cannot change ownership, use status, House, review history or permission grants. Staff review of other players' sheets remains outside HU-009A.
+Direct callers and Worker requests share the same ownership, session, field and transition checks. Client roles have no table grants for profile or sheet access. An RP character kind conveys no HRP capabilities. The character writer cannot change ownership, use status, House, review history or permission grants.
+
+## Character review
+
+The [review routes](CHARACTER_REVIEWS.md) require an active session and a linked player. PostgreSQL resolves the `characters.review` grant from `private.staff_capabilities` on every staff call and rechecks it after locking a submitted character for a decision. Staff queue and sheet access exclude the caller's own characters. The owner route projects only the player's own history. No client receives generic SELECT, UPDATE or DELETE access to reviews.
+
+The `hu_character_review` role cannot log in or bypass RLS. The unexposed `character_review` schema implements the bounded RPC operations with scoped privileges. The role has no privilege to grant capabilities or alter use status. Decisions and House references are updated together, and no reviewer identifiers are projected.
 
 ## Open decisions
 

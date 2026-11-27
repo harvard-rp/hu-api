@@ -9,7 +9,7 @@
 | Linked player with a suspended or unapproved character | The account context remains accessible. The character is ineligible for campus access.                                              |
 | HRP actor                                              | Only the capability rows explicitly granted for their linked player. The context still contains solely their own characters.        |
 
-`characters.review` and `boosts.manage` are initial capability codes. They record authorization intent for later workflows. The only client mutation is [initializing the current player](DISCORD_AUTH.md) in HU-007A. Character, permission and review writes remain closed. An RP type such as `teacher` or `staff_member` conveys no HRP authority. The existing character review constraint prevents self-review.
+`characters.review` and `boosts.manage` are initial capability codes. They record authorization intent for later workflows. Clients can [initialize the current player](DISCORD_AUTH.md) and run the bounded [player character lifecycle](CHARACTERS.md). Permission and review writes remain restricted to trusted operators. An RP type such as `teacher` or `staff_member` conveys no HRP authority. The existing character review constraint prevents self-review.
 
 ## PostgreSQL boundary
 
@@ -22,6 +22,12 @@ The player policy matches the verified `auth.uid()` to the player's `auth_user_i
 ## Player initialization
 
 The invoker facade `public.bootstrap_discord_player()` delegates the write to `account_bootstrap.initialize_current_player()`, which has no parameters. The non-login owner `hu_player_bootstrap` cannot bypass RLS. Auth SELECT grants and policies are scoped to the caller's user, sessions and Discord identity. An invoker helper binds Auth relations at migration time, with no Auth schema usage grant to the dedicated role. The owner can insert the caller's player and read only the linkage columns of that caller's row. It receives no update or delete permission. The facade reads the success context under the original caller's HU-005 policies. `private` and `account_bootstrap` stay unexposed.
+
+## Character lifecycle
+
+`public.player_characters()` and `public.player_character_catalog()` are authenticated invoker facades for the bounded functions in the unexposed `character_lifecycle` schema. The dedicated `hu_character_lifecycle` owner has no login or RLS bypass. Session reads are scoped to the Auth subject. Per-table RLS binds character, profile, sheet and capacity access to that subject's player link. Catalog RLS exposes active rows to the function owner.
+
+Direct callers and Worker requests share the same ownership, session, field and transition checks. Client roles have no table grants for profile or sheet access. An RP character kind conveys no HRP capabilities. The character writer cannot change ownership, use status, House, review history or permission grants. Staff review of other players' sheets remains outside HU-009A.
 
 ## Open decisions
 

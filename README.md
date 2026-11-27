@@ -64,7 +64,7 @@ Every response carries a server-generated `X-Request-Id`. Unregistered routes re
 }
 ```
 
-Future domain routes will live under `/api/v1`.
+The [player character and catalog API](docs/CHARACTERS.md) documents the HU-009A routes and the provisional development policy.
 
 ## Environment
 

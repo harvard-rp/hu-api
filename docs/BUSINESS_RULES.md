@@ -19,6 +19,10 @@ The initial states are `draft`, `submitted`, `changes_requested`, `approved` and
 
 A character uses one of `active` and `suspended` independently of validation. Here `active` means the use state is unsuspended. Campus access will also require the validation and authorization checks defined in a later mission.
 
+## HU-009A development policy
+
+The [character lifecycle](CHARACTERS.md) uses the existing player, profile and sheet records. During development every existing character occupies one slot, including drafts, refused characters and suspended characters. Owners may edit and submit drafts and sheets awaiting corrections. Submitted, approved and refused sheets are locked. Boost loss preserves all data and use states. The field matrix and transition rules in HU-009A await staff approval before release.
+
 ## Open decisions
 
 - Which validation or use states consume a character slot, how excess characters are selected, timing and reactivation, and boost exceptions.

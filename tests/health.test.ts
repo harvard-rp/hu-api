@@ -74,6 +74,13 @@ describe('hu-api', () => {
     expect(document.openapi).toBe('3.0.3');
     expect(Object.keys(document.paths).sort()).toEqual([
       '/api/v1/auth/bootstrap',
+      '/api/v1/catalogs/clubs',
+      '/api/v1/catalogs/houses',
+      '/api/v1/catalogs/programs',
+      '/api/v1/characters',
+      '/api/v1/characters/capacity',
+      '/api/v1/characters/{characterId}',
+      '/api/v1/characters/{characterId}/submit',
       '/api/v1/me',
       '/health',
       '/openapi.json',
@@ -213,4 +220,38 @@ describe('hu-api', () => {
       },
     });
   });
+});
+
+it('allows character JSON preflight only from configured browser origins', async () => {
+  const app = createApp();
+  const path = '/api/v1/characters/a0400000-0000-4000-8000-000000000001';
+  const headers = {
+    Origin: allowedOrigin,
+    'Access-Control-Request-Method': 'PATCH',
+    'Access-Control-Request-Headers': 'Authorization, Content-Type',
+  };
+  const allowed = await app.request(
+    path,
+    { method: 'OPTIONS', headers },
+    corsBindings,
+  );
+  expect(allowed.status).toBe(204);
+  expect(allowed.headers.get('Access-Control-Allow-Origin')).toBe(
+    allowedOrigin,
+  );
+  expect(allowed.headers.get('Access-Control-Allow-Methods')).toContain(
+    'PATCH',
+  );
+  expect(allowed.headers.get('Access-Control-Allow-Headers')).toBe(
+    'Authorization, Content-Type',
+  );
+  const denied = await app.request(
+    path,
+    {
+      method: 'OPTIONS',
+      headers: { ...headers, Origin: 'https://another.example' },
+    },
+    corsBindings,
+  );
+  expect(denied.headers.has('Access-Control-Allow-Origin')).toBe(false);
 });

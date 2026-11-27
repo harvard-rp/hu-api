@@ -13,10 +13,7 @@ const browserOrigin = z.string().refine((value) => {
 
 const allowedOrigins = z.array(browserOrigin);
 
-function createBrowserCors(
-  method: 'GET' | 'POST' = 'GET',
-  allowAuthorization = false,
-) {
+function createBrowserCors(methods = 'GET', requestHeaders?: string) {
   return createMiddleware<{ Bindings: Bindings }>(async (c, next) => {
     c.header('Vary', 'Origin', { append: true });
 
@@ -34,9 +31,9 @@ function createBrowserCors(
         c.req.method === 'OPTIONS' &&
         c.req.header('Access-Control-Request-Method')
       ) {
-        c.header('Access-Control-Allow-Methods', method);
-        if (allowAuthorization)
-          c.header('Access-Control-Allow-Headers', 'Authorization');
+        c.header('Access-Control-Allow-Methods', methods);
+        if (requestHeaders)
+          c.header('Access-Control-Allow-Headers', requestHeaders);
         return c.body(null, 204);
       }
     }
@@ -46,5 +43,12 @@ function createBrowserCors(
 }
 
 export const browserCors = createBrowserCors();
-export const authenticatedBrowserCors = createBrowserCors('GET', true);
-export const bootstrapBrowserCors = createBrowserCors('POST', true);
+export const authenticatedBrowserCors = createBrowserCors(
+  'GET',
+  'Authorization',
+);
+export const bootstrapBrowserCors = createBrowserCors('POST', 'Authorization');
+export const characterBrowserCors = createBrowserCors(
+  'GET, POST, PATCH',
+  'Authorization, Content-Type',
+);

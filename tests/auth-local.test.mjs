@@ -85,10 +85,17 @@ async function signIn({ email, password }) {
   return result.access_token;
 }
 
-function api(path, token, method = 'GET') {
+function api(path, token, method = 'GET', fields) {
   return app.request(
     path,
-    { method, headers: token ? { Authorization: `Bearer ${token}` } : {} },
+    {
+      method,
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(fields ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: fields ? JSON.stringify(fields) : undefined,
+    },
     {
       SUPABASE_URL: url,
       SUPABASE_PUBLISHABLE_KEY: publishableKey,
@@ -194,7 +201,10 @@ afterAll(() => {
       update private.characters set current_review_id = null, validation_status = 'draft'
         where player_id in ('${actor.playerId}', '${teacher.playerId}');
       delete from private.character_reviews where reviewer_id = '${actor.playerId}';
-      delete from private.character_sheets where character_id = '${actorCharacter}';
+      delete from private.character_sheets s using private.characters c
+        where s.character_id = c.id and c.player_id in ('${actor.playerId}', '${teacher.playerId}');
+      delete from public.character_profiles p using private.characters c
+        where p.character_id = c.id and c.player_id in ('${actor.playerId}', '${teacher.playerId}');
       delete from private.characters where player_id in ('${actor.playerId}', '${teacher.playerId}');
       delete from private.staff_capabilities where staff_actor_id = '${actor.playerId}';
       delete from private.staff_actors where player_id = '${actor.playerId}';
@@ -454,3 +464,193 @@ it('rejects a revoked session through both HTTP and PostgREST', async () => {
   const direct = await directBootstrap(newcomerToken);
   expect(await direct.json()).toEqual({ status: 'unauthenticated' });
 });
+
+const charactersPath = '/api/v1/characters';
+const directCharacters = (token, parameters, schema = 'public') =>
+  globalThis.fetch(`${url}/rest/v1/rpc/player_characters`, {
+    method: 'POST',
+    headers: {
+      apikey: publishableKey,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'Content-Type': 'application/json',
+      'Content-Profile': schema,
+    },
+    body: JSON.stringify(parameters),
+    redirect: 'error',
+    signal: globalThis.AbortSignal.timeout(10000),
+  });
+
+it('writes and submits an owned sheet through real Auth and PostgREST', async () => {
+  const created = await api(charactersPath, actorToken, 'POST', {
+    kind: 'staff_member',
+    firstName: 'Fictional',
+    backstory: 'Synthetic private narrative',
+  });
+  expect(created.status).toBe(201);
+  expect(created.headers.get('Cache-Control')).toBe('no-store');
+  const draft = await created.json();
+  expect(draft).toMatchObject({
+    firstName: 'Fictional',
+    houseId: null,
+    validationStatus: 'draft',
+  });
+  const details = `${charactersPath}/${draft.id}`;
+  const submit = `${details}/submit`;
+  const listed = await (await api(charactersPath, actorToken)).json();
+  expect(listed).toContainEqual(
+    expect.objectContaining({ id: draft.id, firstName: 'Fictional' }),
+  );
+  expect(JSON.stringify(listed)).not.toContain('Synthetic private narrative');
+  expect(await (await api(details, actorToken)).json()).toEqual(draft);
+  expect((await api(details, teacherToken)).status).toBe(404);
+  expect(
+    (
+      await api(details, teacherToken, 'PATCH', {
+        expectedRevision: draft.revision,
+        firstName: 'Intruder',
+      })
+    ).status,
+  ).toBe(404);
+  expect(
+    (
+      await api(submit, actorToken, 'POST', {
+        expectedRevision: draft.revision,
+      })
+    ).status,
+  ).toBe(422);
+
+  const edits = await Promise.all(
+    ['One', 'Two'].map((lastName) =>
+      api(details, actorToken, 'PATCH', {
+        expectedRevision: draft.revision,
+        lastName,
+        personality: 'Inventive',
+        physicalDescription: 'A fictional description',
+        faceClaim: 'A fictional illustration',
+      }),
+    ),
+  );
+  expect(edits.map(({ status }) => status).sort()).toEqual([200, 409]);
+  const conflict = await edits.find(({ status }) => status === 409).json();
+  expect(conflict.error.code).toBe('CHARACTER_REVISION_CONFLICT');
+  const edited = await edits.find(({ status }) => status === 200).json();
+  expect(edited.revision).not.toBe(draft.revision);
+  expect(await (await api(details, actorToken)).json()).toEqual(edited);
+  const submitted = await api(submit, actorToken, 'POST', {
+    expectedRevision: edited.revision,
+  });
+  expect(submitted.status).toBe(200);
+  const submittedSheet = await submitted.json();
+  expect(submittedSheet).toMatchObject({
+    validationStatus: 'submitted',
+    useStatus: 'active',
+  });
+  expect(
+    (
+      await api(submit, actorToken, 'POST', {
+        expectedRevision: submittedSheet.revision,
+      })
+    ).status,
+  ).toBe(409);
+  const player = await (await api('/api/v1/me', actorToken)).json();
+  expect(player.capabilities).not.toContain('boosts.manage');
+  expect(player.characters).toContainEqual({
+    id: draft.id,
+    validationStatus: 'submitted',
+    useStatus: 'active',
+    canAccessCampus: false,
+  });
+});
+
+it('keeps catalogs and direct character access scoped to eligible sessions', async () => {
+  const clubs = await api('/api/v1/catalogs/clubs', actorToken);
+  expect(clubs.status).toBe(200);
+  const entries = await clubs.json();
+  expect(entries).toContainEqual(
+    expect.objectContaining({ slug: 'bde', memberCapacity: 10 }),
+  );
+  expect(entries.map(({ slug }) => slug)).not.toContain('droit');
+  expect((await api('/api/v1/catalogs/houses')).status).toBe(401);
+  const unlinkedSession = await signIn(unlinked);
+  expect((await api('/api/v1/catalogs/programs', unlinkedSession)).status).toBe(
+    403,
+  );
+  expect((await directCharacters(undefined, { operation: 'list' })).ok).toBe(
+    false,
+  );
+  expect(
+    (
+      await directCharacters(
+        actorToken,
+        { operation: 'list' },
+        'character_lifecycle',
+      )
+    ).ok,
+  ).toBe(false);
+  expect(
+    await (
+      await directCharacters(teacherToken, {
+        operation: 'detail',
+        target_id: actorCharacter,
+      })
+    ).json(),
+  ).toEqual({ status: 'not_found' });
+  expect(
+    await (
+      await directCharacters(actorToken, {
+        operation: 'create',
+        fields: { kind: 'student', houseId: null, playerId: teacher.playerId },
+      })
+    ).json(),
+  ).toEqual({ status: 'invalid_request' });
+  sql(`delete from auth.sessions where user_id = '${unlinked.authId}';`);
+  expect(
+    await (
+      await directCharacters(unlinkedSession, { operation: 'list' })
+    ).json(),
+  ).toEqual({ status: 'unauthenticated' });
+  expect((await api(charactersPath, unlinkedSession)).status).toBe(401);
+});
+
+it('grants exactly one of six concurrent requests the last remaining slot', async () => {
+  const capacityPath = `${charactersPath}/capacity`;
+  const capacity = await (await api(capacityPath, actorToken)).json();
+  expect(capacity.available).toBeGreaterThan(0);
+  for (let index = 1; index < capacity.available; index++) {
+    expect(
+      (await api(charactersPath, actorToken, 'POST', { kind: 'citizen' }))
+        .status,
+    ).toBe(201);
+  }
+  const requests = Array.from({ length: 6 }, (_, index) =>
+    index % 2 === 0
+      ? api(charactersPath, actorToken, 'POST', { kind: 'citizen' })
+      : directCharacters(actorToken, {
+          operation: 'create',
+          fields: { kind: 'citizen' },
+        }),
+  );
+  const outcomes = await Promise.all(
+    requests.map(async (request, index) => {
+      const response = await request;
+      const payload = await response.json();
+      if (index % 2 === 0) {
+        expect([201, 409]).toContain(response.status);
+        return response.status === 201 ? 'ok' : payload.error.code;
+      }
+      expect(response.status).toBe(200);
+      return payload.status === 'capacity_reached'
+        ? 'CHARACTER_CAPACITY_REACHED'
+        : payload.status;
+    }),
+  );
+  expect(outcomes.filter((outcome) => outcome === 'ok')).toHaveLength(1);
+  expect(
+    outcomes.filter((outcome) => outcome === 'CHARACTER_CAPACITY_REACHED'),
+  ).toHaveLength(5);
+  expect(await (await api(capacityPath, actorToken)).json()).toEqual({
+    total: capacity.total,
+    used: capacity.total,
+    available: 0,
+  });
+}, 15000);

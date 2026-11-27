@@ -29,6 +29,15 @@ const bootstrapResult = z.discriminatedUnion('status', [
 
 const headers = { ...requestIdHeader, ...cacheControlHeader };
 
+async function hasBody(body: ReadableStream<Uint8Array> | null) {
+  if (!body) return false;
+  // Workers can supply an empty stream for a bodyless HTTP POST.
+  for await (const chunk of body) {
+    if (chunk.byteLength > 0) return true;
+  }
+  return false;
+}
+
 export const bootstrapRoute = createRoute({
   method: 'post',
   path: '/api/v1/auth/bootstrap',
@@ -85,7 +94,7 @@ export const postBootstrap: RouteHandler<
       401,
     );
   }
-  if (c.req.raw.body !== null || new URL(c.req.url).search !== '') {
+  if (new URL(c.req.url).search !== '' || (await hasBody(c.req.raw.body))) {
     return c.json(
       errorBody(
         c,

@@ -97,7 +97,7 @@ describe('Supabase queries', () => {
     const [input, init] = transport.mock.calls[0]!;
     expect(String(input)).toBe(`${url}/rest/v1/fixtures?select=id`);
     expect(new Headers(init?.headers).get('apikey')).toBe(publishableKey);
-    expect(init?.redirect).toBe('error');
+    expect(init?.redirect).toBe('manual');
   });
 
   it('isolates concurrent user JWTs and keeps anonymous calls independent', async () => {

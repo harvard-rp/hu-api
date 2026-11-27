@@ -202,6 +202,7 @@ describe('GET /api/v1/me with simulated Auth and Data API responses', () => {
       JSON.stringify({
         requestId: response.headers.get('X-Request-Id'),
         status: 503,
+        authFailure: { reason: 'transport_failure' },
       }),
     );
   });
@@ -246,7 +247,7 @@ describe('GET /api/v1/me with simulated Auth and Data API responses', () => {
         const ownRequest = headers.get('Authorization') === `Bearer ${first}`;
         requests.push(path);
         expect(headers.get('apikey')).toBe(bindings.SUPABASE_PUBLISHABLE_KEY);
-        expect(init?.redirect).toBe('error');
+        expect(init?.redirect).toBe('manual');
         if (path === '/auth/v1/user') {
           return Response.json({
             id: ownRequest ? userId : secondId,
@@ -336,7 +337,7 @@ describe('POST /api/v1/auth/bootstrap with simulated dependencies', () => {
         expect(new Headers(init?.headers).get('Authorization')).toBe(
           `Bearer ${token}`,
         );
-        expect(init?.redirect).toBe('error');
+        expect(init?.redirect).toBe('manual');
         return data;
       });
     const token = jwt();

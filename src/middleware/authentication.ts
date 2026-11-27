@@ -12,6 +12,7 @@ export const noStore = createMiddleware<AppEnv>(async (c, next) => {
 export const authenticate = createMiddleware<AppEnv>(async (c, next) => {
   const result = await verifyAccessToken(c.env, c.req.header('Authorization'));
   if (result.status === 'unavailable') {
+    c.set('authFailure', result.failure);
     return c.json(
       errorBody(
         c,

@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import type { SupabaseBindings } from '../../config/bindings';
 import { createSupabaseAuthClient } from './client';
+import { SupabaseConfigurationError } from './config';
 
 export type VerifiedAuth = {
   readonly authUserId: string;
@@ -36,9 +37,24 @@ function readClaims(token: string) {
   }
 }
 
+export type AuthFailure =
+  | {
+      reason:
+        | 'invalid_configuration'
+        | 'transport_failure'
+        | 'invalid_response'
+        | 'unexpected_error';
+    }
+  | { reason: 'upstream_http_error'; upstreamStatus: number };
+
 type Verification =
   | { status: 'verified'; identity: VerifiedAuth }
-  | { status: 'invalid' | 'unavailable' };
+  | { status: 'invalid' }
+  | { status: 'unavailable'; failure: AuthFailure };
+
+function unavailable(failure: AuthFailure): Verification {
+  return { status: 'unavailable', failure };
+}
 
 export async function verifyAccessToken(
   bindings: SupabaseBindings | undefined,
@@ -61,11 +77,25 @@ export async function verifyAccessToken(
             error.code === 'bad_jwt' ||
             error.code === 'session_not_found' ||
             error.code === 'user_not_found'));
-      return { status: denied ? 'invalid' : 'unavailable' };
+      if (denied) return { status: 'invalid' };
+
+      const upstreamStatus = error.status;
+      if (upstreamStatus === 0) {
+        return unavailable({ reason: 'transport_failure' });
+      }
+      if (
+        upstreamStatus !== undefined &&
+        Number.isInteger(upstreamStatus) &&
+        upstreamStatus >= 400 &&
+        upstreamStatus <= 599
+      ) {
+        return unavailable({ reason: 'upstream_http_error', upstreamStatus });
+      }
+      return unavailable({ reason: 'invalid_response' });
     }
 
     const userId = z.uuid().safeParse(data.user?.id);
-    if (!userId.success) return { status: 'unavailable' };
+    if (!userId.success) return unavailable({ reason: 'invalid_response' });
 
     // These checks only narrow acceptance after the configured Auth server
     // has verified this token. Identity comes from the verified user response.
@@ -84,7 +114,12 @@ export async function verifyAccessToken(
       status: 'verified',
       identity: { authUserId: userId.data, accessToken },
     };
-  } catch {
-    return { status: 'unavailable' };
+  } catch (error) {
+    return unavailable({
+      reason:
+        error instanceof SupabaseConfigurationError
+          ? 'invalid_configuration'
+          : 'unexpected_error',
+    });
   }
 }

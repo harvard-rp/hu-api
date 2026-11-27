@@ -17,6 +17,20 @@ const statelessAuth = {
   detectSessionInUrl: false,
 };
 
+async function fetchWithoutRedirects(
+  transport: typeof fetch,
+  input: Parameters<typeof fetch>[0],
+  init?: RequestInit,
+) {
+  // Workers rejects redirect: 'error' before sending the request.
+  const response = await transport(input, { ...init, redirect: 'manual' });
+  if (response.status >= 300 && response.status < 400) {
+    await response.body?.cancel();
+    throw new Error('Unexpected Supabase redirect.');
+  }
+  return response;
+}
+
 export function createSupabaseAuthClient(
   bindings: SupabaseBindings | undefined,
 ) {
@@ -25,9 +39,8 @@ export function createSupabaseAuthClient(
     auth: { ...statelessAuth, skipAutoInitialize: true },
     global: {
       fetch: (input, init) =>
-        fetch(input, {
+        fetchWithoutRedirects(fetch, input, {
           ...init,
-          redirect: 'error',
           signal: AbortSignal.timeout(5000),
         }),
     },
@@ -48,7 +61,7 @@ export function createSupabaseClient(
     accessToken: async () => accessToken ?? null,
     auth: statelessAuth,
     global: {
-      fetch: (input, init) => transport(input, { ...init, redirect: 'error' }),
+      fetch: (input, init) => fetchWithoutRedirects(transport, input, init),
     },
   });
 }

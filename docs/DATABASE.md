@@ -49,7 +49,7 @@ writeFileSync(".dev.vars.supabase-local",
 | `pnpm supabase:reset`   | Discard local database data, replay Git migrations and run the local seed.                                                 |
 | `pnpm supabase:types`   | Regenerate `src/lib/supabase/database.types.ts` from the local `public` and `private` schemas after successful CLI output. |
 | `pnpm test:integration` | Run pgTAP against the running local database.                                                                              |
-| `pnpm test:auth:local`  | Exercise the protected route with real tokens from the local Auth service.                                                 |
+| `pnpm test:auth:local`  | Verify the protected routes, direct RPC calls and concurrent account bootstrap with real local Auth tokens.                |
 | `pnpm test:concurrency` | Run two-session club reservation tests after a clean local reset.                                                          |
 
 The scripts accept no additional arguments. Supabase CLI v3 treats `db reset`, `gen types` and `test db` as local unless a remote target is selected. The scripts omit all remote targets. The reset script uses the same loopback network as startup.
@@ -95,6 +95,8 @@ pnpm supabase:stop
 Run the stop command after an unsuccessful local run as well. The pgTAP smoke test checks PostgreSQL 17 and verifies that a new table receives no default CRUD grants for `anon` and `authenticated`. The probe rolls back.
 
 HU-004 documents the closed-by-default [domain schema](DATABASE_SCHEMA.md) and [business rules](BUSINESS_RULES.md). The integration tests cover identity, reviews, boost capacity, catalogs, memberships and client-role denials. HU-005 adds the invoker-only player context and verifies its grants, policies and direct calls. See [permissions](PERMISSIONS.md) and [local Auth verification](AUTHENTICATION.md#local-verification).
+
+HU-007A reads managed Auth tables using scoped grants and RLS. Supabase CLI 3.4.0 provisions the Auth SELECT grant options and Supautils policy permissions used by the migration. The migration uses the `postgres` operator's role-management privileges and binds Auth references at creation time. Verify these prerequisites for each approved environment. See [Discord identity and bootstrap](DISCORD_AUTH.md).
 
 ## Environments
 

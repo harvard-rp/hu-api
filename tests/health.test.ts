@@ -73,6 +73,7 @@ describe('hu-api', () => {
     await expect(SwaggerParser.validate(document)).resolves.toBeDefined();
     expect(document.openapi).toBe('3.0.3');
     expect(Object.keys(document.paths).sort()).toEqual([
+      '/api/v1/auth/bootstrap',
       '/api/v1/me',
       '/health',
       '/openapi.json',

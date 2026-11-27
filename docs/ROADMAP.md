@@ -20,9 +20,13 @@ Model players, boost confirmations, fictional character sheets, reviews and univ
 
 Verify Supabase Auth bearer tokens and serve a read-only player context with explicit HRP capabilities and owned character eligibility. The [authorization boundary](PERMISSIONS.md) leaves grant management and character writes to later workflows.
 
+## HU-007A — Discord identity and player bootstrap
+
+Verify the Auth-owned Discord identity and create or recover the linked player through the [bootstrap API](DISCORD_AUTH.md). Guild membership and frontend OAuth integration are separate.
+
 ## Upcoming work
 
-- HU-007 will integrate Discord OAuth2, securely create or link player accounts, and define client session handling.
+- HU-007B will integrate the frontend Discord OAuth2 flow and client session handling.
 - HU-009 will add authorized character creation and review operations once the remaining workflow decisions are settled.
 - Plan the first Cloudflare release and the approved browser origins.
 

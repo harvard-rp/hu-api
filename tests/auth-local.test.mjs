@@ -25,6 +25,7 @@ function fixture() {
 const actor = fixture();
 const teacher = fixture();
 const unlinked = fixture();
+const newcomer = fixture();
 const activeCharacter = randomUUID();
 const suspendedCharacter = randomUUID();
 const submittedCharacter = randomUUID();
@@ -34,6 +35,7 @@ let publishableKey;
 let actorToken;
 let teacherToken;
 let unlinkedToken;
+let newcomerToken;
 let seeded = false;
 
 function sql(command) {
@@ -83,10 +85,10 @@ async function signIn({ email, password }) {
   return result.access_token;
 }
 
-function api(path, token) {
+function api(path, token, method = 'GET') {
   return app.request(
     path,
-    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+    { method, headers: token ? { Authorization: `Bearer ${token}` } : {} },
     {
       SUPABASE_URL: url,
       SUPABASE_PUBLISHABLE_KEY: publishableKey,
@@ -144,7 +146,7 @@ beforeAll(async () => {
       confirmation_token, recovery_token, email_change, email_change_token_new, email_change_token_current,
       phone_change, phone_change_token, reauthentication_token, raw_app_meta_data, raw_user_meta_data,
       created_at, updated_at
-    ) values ${[actor, teacher, unlinked]
+    ) values ${[actor, teacher, unlinked, newcomer]
       .map(
         ({ authId, email, password }) =>
           `('00000000-0000-0000-0000-000000000000', '${authId}', 'authenticated', 'authenticated',
@@ -176,10 +178,11 @@ beforeAll(async () => {
   `);
   seeded = true;
 
-  [actorToken, teacherToken, unlinkedToken] = await Promise.all([
+  [actorToken, teacherToken, unlinkedToken, newcomerToken] = await Promise.all([
     signIn(actor),
     signIn(teacher),
     signIn(unlinked),
+    signIn(newcomer),
   ]);
 }, 40000);
 
@@ -196,7 +199,8 @@ afterAll(() => {
       delete from private.staff_capabilities where staff_actor_id = '${actor.playerId}';
       delete from private.staff_actors where player_id = '${actor.playerId}';
       delete from private.players where id in ('${actor.playerId}', '${teacher.playerId}');
-      delete from auth.users where id in ('${actor.authId}', '${teacher.authId}', '${unlinked.authId}');
+      delete from private.players where auth_user_id = '${newcomer.authId}';
+      delete from auth.users where id in ('${actor.authId}', '${teacher.authId}', '${unlinked.authId}', '${newcomer.authId}');
       commit;
     `);
   } finally {
@@ -327,4 +331,126 @@ it('rejects a still-signed token after the local Auth session is deleted', async
   expect((await api('/api/v1/me', unlinkedToken)).status).toBe(403);
   sql(`delete from auth.sessions where user_id = '${unlinked.authId}';`);
   expect((await api('/api/v1/me', unlinkedToken)).status).toBe(401);
+});
+
+function addDiscordIdentity(user, discordId = user.discordId) {
+  sql(`insert into auth.identities (id, user_id, provider, provider_id, identity_data, created_at, updated_at, last_sign_in_at)
+    values (gen_random_uuid(), '${user.authId}', 'discord', '${discordId}',
+      jsonb_build_object('sub', '${discordId}'::text, 'provider_id', '${discordId}'::text), now(), now(), now());`);
+}
+
+const bootstrapPath = '/api/v1/auth/bootstrap';
+const directBootstrapPath = '/rest/v1/rpc/bootstrap_discord_player';
+
+function directBootstrap(
+  token,
+  parameters = {},
+  method = 'POST',
+  schema = 'public',
+) {
+  return globalThis.fetch(`${url}${directBootstrapPath}`, {
+    method,
+    headers: {
+      apikey: publishableKey,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(method === 'POST'
+        ? { 'Content-Type': 'application/json', 'Content-Profile': schema }
+        : {}),
+    },
+    ...(method === 'POST' ? { body: JSON.stringify(parameters) } : {}),
+    redirect: 'error',
+    signal: globalThis.AbortSignal.timeout(10000),
+  });
+}
+
+it('leaves /me read-only and ignores metadata without an Auth-owned Discord identity', async () => {
+  expect((await api('/api/v1/me', newcomerToken)).status).toBe(403);
+  const response = await api(bootstrapPath, newcomerToken, 'POST');
+  expect(response.status).toBe(403);
+  expect(await response.json()).toMatchObject({
+    error: { code: 'DISCORD_IDENTITY_REQUIRED' },
+  });
+  expect((await api('/api/v1/me', newcomerToken)).status).toBe(403);
+});
+
+it('initializes exactly one player across concurrent HTTP and direct RPC calls', async () => {
+  // The password session predates the synthetic linked identity. Bootstrap
+  // uses the current Auth identity, with no claim of a real Discord login.
+  addDiscordIdentity(newcomer);
+
+  const responses = await Promise.all([
+    ...Array.from({ length: 4 }, () =>
+      api(bootstrapPath, newcomerToken, 'POST'),
+    ),
+    ...Array.from({ length: 4 }, () => directBootstrap(newcomerToken)),
+  ]);
+  const contexts = [];
+  for (const [index, response] of responses.entries()) {
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    if (index < 4) {
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+      contexts.push(payload);
+    } else {
+      expect(payload.status).toBe('ok');
+      contexts.push(payload.context);
+    }
+  }
+  const first = contexts[0];
+  expect(first).toEqual({
+    playerId: expect.any(String),
+    capabilities: [],
+    characters: [],
+    canAccessCampus: false,
+  });
+  for (const context of contexts) expect(context).toEqual(first);
+  expect(
+    await (await api(bootstrapPath, newcomerToken, 'POST')).json(),
+  ).toEqual(first);
+  expect(await (await api('/api/v1/me', newcomerToken)).json()).toEqual(first);
+});
+
+it('returns the same existing player context and rejects an attempt to claim that Discord account', async () => {
+  addDiscordIdentity(actor);
+  const current = await (await api('/api/v1/me', actorToken)).json();
+  expect(await (await api(bootstrapPath, actorToken, 'POST')).json()).toEqual(
+    current,
+  );
+
+  sql(
+    `delete from auth.identities where user_id = '${actor.authId}' and provider = 'discord';`,
+  );
+  addDiscordIdentity(teacher, actor.discordId);
+  const conflict = await api(bootstrapPath, teacherToken, 'POST');
+  expect(conflict.status).toBe(409);
+  expect(await conflict.json()).toEqual({
+    error: {
+      code: 'IDENTITY_LINK_CONFLICT',
+      message: 'The player link requires operator review.',
+      requestId: conflict.headers.get('X-Request-Id'),
+    },
+  });
+  expect(await (await api('/api/v1/me', actorToken)).json()).toEqual(current);
+});
+
+it('blocks invalid tokens and denies RPC target selection or private schema access', async () => {
+  const [header, payload, signature] = newcomerToken.split('.');
+  const invalid = `${header}.${payload}.${signature[0] === 'A' ? 'B' : 'A'}${signature.slice(1)}`;
+  expect((await api(bootstrapPath, invalid, 'POST')).status).toBe(401);
+  expect((await directBootstrap(invalid)).ok).toBe(false);
+  expect((await directBootstrap()).ok).toBe(false);
+  expect(
+    (await directBootstrap(newcomerToken, { player_id: actor.playerId })).ok,
+  ).toBe(false);
+  expect((await directBootstrap(newcomerToken, {}, 'GET')).ok).toBe(false);
+  expect(
+    (await directBootstrap(newcomerToken, {}, 'POST', 'account_bootstrap')).ok,
+  ).toBe(false);
+});
+
+it('rejects a revoked session through both HTTP and PostgREST', async () => {
+  sql(`delete from auth.sessions where user_id = '${newcomer.authId}';`);
+  expect((await api(bootstrapPath, newcomerToken, 'POST')).status).toBe(401);
+  const direct = await directBootstrap(newcomerToken);
+  expect(await direct.json()).toEqual({ status: 'unauthenticated' });
 });

@@ -35,8 +35,21 @@ The [review routes](CHARACTER_REVIEWS.md) require an active session and a linked
 
 The `hu_character_review` role cannot log in or bypass RLS. The unexposed `character_review` schema implements the bounded RPC operations with scoped privileges. The role has no privilege to grant capabilities or alter use status. Decisions and House references are updated together, and no reviewer identifiers are projected.
 
+## Future reviewer role mapping
+
+The direction designated these Discord role IDs as candidates for the same HRP capability. This is planning data.
+
+| Discord role ID     | Future capability |
+| ------------------- | ----------------- |
+| 1470422368978604163 | characters.review |
+| 1572702096581468250 | characters.review |
+| 1470074424865591387 | characters.review |
+| 1572701721967206470 | characters.review |
+
+Propose resolving membership in the intended guild through a trusted server-side source against the verified Discord identity. Deny automatic grants if identity or guild membership cannot be verified. Track grant provenance so removing one mapped role does not remove another valid source or an authorized manual grant. Define verification freshness, role-loss handling, operator audit and a dry-run reconciliation before enabling synchronization. The API continues to check effective database capabilities. RP character types and player claims convey no HRP authority. The proposed characters.reopen capability is separate and has no automatic mapping.
+
 ## Open decisions
 
-- The staff role matrix, who can grant or revoke each capability, and how real Discord roles will be mapped.
+- Who can grant or revoke capabilities, verified guild membership and freshness, overlap with manual grants and the synchronization rollout.
 - Audit retention and the operator, target, timestamp and reason to record for future grant and revoke workflows. `granted_at` records current grant creation. It is not an audit history.
 - Review access to other characters' sheets, workflow transitions, permitted edits, and the domain permissions required by each campus feature.

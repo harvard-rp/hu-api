@@ -13,8 +13,8 @@ const browserOrigin = z.string().refine((value) => {
 
 const allowedOrigins = z.array(browserOrigin);
 
-export const browserCors = createMiddleware<{ Bindings: Bindings }>(
-  async (c, next) => {
+function createBrowserCors(allowAuthorization = false) {
+  return createMiddleware<{ Bindings: Bindings }>(async (c, next) => {
     c.header('Vary', 'Origin', { append: true });
 
     const origin = c.req.header('Origin');
@@ -32,10 +32,15 @@ export const browserCors = createMiddleware<{ Bindings: Bindings }>(
         c.req.header('Access-Control-Request-Method')
       ) {
         c.header('Access-Control-Allow-Methods', 'GET');
+        if (allowAuthorization)
+          c.header('Access-Control-Allow-Headers', 'Authorization');
         return c.body(null, 204);
       }
     }
 
     await next();
-  },
-);
+  });
+}
+
+export const browserCors = createBrowserCors();
+export const authenticatedBrowserCors = createBrowserCors(true);

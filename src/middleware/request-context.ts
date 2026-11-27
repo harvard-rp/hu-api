@@ -1,10 +1,11 @@
 import { createMiddleware } from 'hono/factory';
 
 import type { Bindings } from '../config/bindings';
+import type { VerifiedAuth } from '../lib/supabase/auth';
 
 export type AppEnv = {
   Bindings: Bindings;
-  Variables: { requestId: string };
+  Variables: { requestId: string; auth?: VerifiedAuth };
 };
 
 export const requestContext = createMiddleware<AppEnv>(async (c, next) => {

@@ -64,7 +64,7 @@ describe('hu-api', () => {
     });
   });
 
-  it('serves a valid OpenAPI document describing both public endpoints', async () => {
+  it('serves a valid OpenAPI document describing public and protected endpoints', async () => {
     const response = await createApp().request('/openapi.json');
 
     expect(response.status).toBe(200);
@@ -73,6 +73,7 @@ describe('hu-api', () => {
     await expect(SwaggerParser.validate(document)).resolves.toBeDefined();
     expect(document.openapi).toBe('3.0.3');
     expect(Object.keys(document.paths).sort()).toEqual([
+      '/api/v1/me',
       '/health',
       '/openapi.json',
     ]);
@@ -80,6 +81,12 @@ describe('hu-api', () => {
     expect(document.paths['/openapi.json']?.get?.responses).toHaveProperty(
       '200',
     );
+    expect(document.paths['/api/v1/me']?.get?.security).toEqual([
+      { SupabaseBearer: [] },
+    ]);
+    expect(
+      Object.keys(document.paths['/api/v1/me']?.get?.responses ?? {}).sort(),
+    ).toEqual(['200', '401', '403', '500', '503']);
   });
 
   it.each([

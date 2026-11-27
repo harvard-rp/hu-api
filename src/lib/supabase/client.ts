@@ -11,6 +11,29 @@ type SupabaseClientOptions = {
 };
 
 const jwt = z.jwt();
+const statelessAuth = {
+  persistSession: false,
+  autoRefreshToken: false,
+  detectSessionInUrl: false,
+};
+
+export function createSupabaseAuthClient(
+  bindings: SupabaseBindings | undefined,
+) {
+  const { url, publishableKey } = readSupabaseConfig(bindings);
+  const client = createClient(url, publishableKey, {
+    auth: { ...statelessAuth, skipAutoInitialize: true },
+    global: {
+      fetch: (input, init) =>
+        fetch(input, {
+          ...init,
+          redirect: 'error',
+          signal: AbortSignal.timeout(5000),
+        }),
+    },
+  });
+  return { auth: client.auth, issuer: `${url}/auth/v1` };
+}
 
 export function createSupabaseClient(
   bindings: SupabaseBindings | undefined,
@@ -23,11 +46,7 @@ export function createSupabaseClient(
 
   return createClient(url, publishableKey, {
     accessToken: async () => accessToken ?? null,
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
+    auth: statelessAuth,
     global: {
       fetch: (input, init) => transport(input, { ...init, redirect: 'error' }),
     },

@@ -49,6 +49,7 @@ writeFileSync(".dev.vars.supabase-local",
 | `pnpm supabase:reset`   | Discard local database data, replay Git migrations and run the local seed.                                                 |
 | `pnpm supabase:types`   | Regenerate `src/lib/supabase/database.types.ts` from the local `public` and `private` schemas after successful CLI output. |
 | `pnpm test:integration` | Run pgTAP against the running local database.                                                                              |
+| `pnpm test:auth:local`  | Exercise the protected route with real tokens from the local Auth service.                                                 |
 | `pnpm test:concurrency` | Run two-session club reservation tests after a clean local reset.                                                          |
 
 The scripts accept no additional arguments. Supabase CLI v3 treats `db reset`, `gen types` and `test db` as local unless a remote target is selected. The scripts omit all remote targets. The reset script uses the same loopback network as startup.
@@ -74,7 +75,7 @@ Run `pnpm test` for SDK and HTTP tests with synthetic data and injected fetch. R
 
 The [Database tests workflow](../.github/workflows/database-tests.yml) runs on a standard Ubuntu 24.04 runner for changes to Supabase configuration, migrations, the database script, the application, tests or the toolchain. Review the **Database tests** check on the pull request or in the repository's **Actions** tab. Once the workflow is present on the default branch, use **Actions → Database tests → Run workflow** for a manual run.
 
-The job checks Docker, starts the local Supabase stack on the runner, reports container names and status, rebuilds the local database, runs pgTAP and concurrent reservation probes, regenerates `src/lib/supabase/database.types.ts`, checks it against the checked-in file and runs TypeScript checking. The cleanup step runs after any failed step once Docker has been verified. All database operations use the runner's local stack and the job requires only read access to repository contents.
+The job checks Docker, starts the local Supabase stack on the runner, reports container names and status, rebuilds the local database, runs pgTAP, concurrent reservation probes and the local Auth integration suite, regenerates `src/lib/supabase/database.types.ts`, checks it against the checked-in file and runs TypeScript checking. The cleanup step runs after any failed step once Docker has been verified. All database operations use the runner's local stack and the job requires only read access to repository contents.
 
 Use the same commands to reproduce the job on a machine with Docker.
 
@@ -84,6 +85,7 @@ pnpm supabase:status
 pnpm supabase:reset
 pnpm test:integration
 pnpm test:concurrency
+pnpm test:auth:local
 pnpm supabase:types
 git diff --exit-code -- src/lib/supabase/database.types.ts
 pnpm typecheck
@@ -92,7 +94,7 @@ pnpm supabase:stop
 
 Run the stop command after an unsuccessful local run as well. The pgTAP smoke test checks PostgreSQL 17 and verifies that a new table receives no default CRUD grants for `anon` and `authenticated`. The probe rolls back.
 
-HU-004 documents the closed-by-default [domain schema](DATABASE_SCHEMA.md) and [business rules](BUSINESS_RULES.md). The integration tests cover identity, reviews, boost capacity, catalogs, memberships and client-role denials.
+HU-004 documents the closed-by-default [domain schema](DATABASE_SCHEMA.md) and [business rules](BUSINESS_RULES.md). The integration tests cover identity, reviews, boost capacity, catalogs, memberships and client-role denials. HU-005 adds the invoker-only player context and verifies its grants, policies and direct calls. See [permissions](PERMISSIONS.md) and [local Auth verification](AUTHENTICATION.md#local-verification).
 
 ## Environments
 

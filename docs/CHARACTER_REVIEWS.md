@@ -1,5 +1,7 @@
 # Character review
 
+This page describes the merged HU-009B implementation. The [approved HU-009F-A target and migration proposal](CHARACTER_POLICY.md) document future behavior.
+
 HU-009B gives linked HRP actors with the effective `characters.review` capability a review queue and allows owners to read player-facing decisions. All routes require a Supabase Auth bearer token and return `Cache-Control: no-store`. Decisions and comments are stored in the existing `private.character_reviews` table. Comments are plain text intended for the player. This workflow has no confidential staff note field.
 
 ## HTTP contract

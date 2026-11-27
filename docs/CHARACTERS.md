@@ -1,5 +1,7 @@
 # Player character lifecycle
 
+This page describes the merged HU-009A implementation. The [approved HU-009F-A target and migration proposal](CHARACTER_POLICY.md) document future behavior.
+
 HU-009A lets a linked player work on their own fictional character sheets. The Worker verifies a Supabase Auth bearer token with Auth and forwards it with the project's publishable key. PostgreSQL resolves the player from the Auth subject and rechecks the active session. The endpoints use `Cache-Control: no-store`. Use the server-generated `X-Request-Id` to correlate a response with its log entry.
 
 ## HTTP contract
@@ -61,6 +63,6 @@ Patch and submit lock the character row and verify the revision after the lock. 
 
 The public RPC facades use invoker rights. Their constrained implementation sits in the unexposed `character_lifecycle` schema. A dedicated non-login owner with no RLS bypass can see only the caller's rows and active catalog entries. It holds no permissions to assign a House, modify eligibility or grant HRP rights. A signed token cannot use the new RPCs after session deletion. Actor or role data supplied by the player conveys no authority.
 
-## Decisions before release
+## Successor policy
 
-Staff approval remains open for slot-consuming states, the submission matrix and editorial minima, type changes, the treatment of refused or excess characters, archival or deletion, and staff review and data visibility. Staff review is documented in [HU-009B](CHARACTER_REVIEWS.md). Club admission remains outside this workflow. Validate the provisional policy before applying this migration or deploying these HTTP routes remotely.
+HU-009F-A approves hybrid sheets, editorial line ranges, slot accounting and handling of the first three refusals. The field matrix and reopening design require follow-up decisions. [Character policy](CHARACTER_POLICY.md)

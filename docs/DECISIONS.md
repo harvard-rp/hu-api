@@ -37,3 +37,7 @@ Use the configured project's Supabase Auth service to verify the request token b
 ## HU-007A — Verified Discord identity and insert-only bootstrap
 
 Read the account ID from the Discord identity managed by Supabase Auth. Revalidate session and identity for the write path. Preserve conflicts for operator review and let unique keys arbitrate concurrent requests without updating existing players. A restricted, non-login function owner performs the insert and the facade projects the existing player context with invoker permissions. See [Discord bootstrap](DISCORD_AUTH.md).
+
+## HU-009F-A — Character policy before implementation
+
+[Character policy](CHARACTER_POLICY.md) records the approved target, proposed design and remaining decisions. SQL, API, frontend and Discord behavior remain at their reference implementations. The proposed migration preserves legacy decisions and assigns new Houses only at final student approval. The reopening design retains lifetime refusals and uses the player capacity lock. Coordinate future notification events with HU-010A without making decisions depend on Discord delivery.

@@ -13,24 +13,18 @@ Harvard University RP uses the Digital Campus to manage characters and campus se
 | Programs                       | The program list is extensible.                                                                                                | Houses, programs and clubs are editable catalogs with stable UUIDs and unique slugs.                                                                                            |
 | Social profiles and reputation | An RP Instagram profile belongs to a character. Reputation can increase or decrease, and the ranking is reserved for students. | These are requirements for later modules.                                                                                                                                       |
 
-## Proposed review states
+## Approved HU-009F-A target
 
-The initial states are `draft`, `submitted`, `changes_requested`, `approved` and `rejected`. The proposed workflow is to submit a draft, receive a staff decision and resubmit after a correction request. PostgreSQL checks that a decision and any assigned House are supported by the review records. The sequence of permissible transitions is still open. The optional assignment history can span reviews, so a later approval can retain the House from an earlier review.
+[Character policy](CHARACTER_POLICY.md) defines the hybrid sheet model, submission matrix proposal, editorial limits, state transitions, capacity and reopening proposal. Players choose inline authoring or a manually reviewed Canva, Google Docs or Google Sites link. Both modes retain structured fictional identity and campus reservation data.
 
-A character uses one of `active` and `suspended` independently of validation. Here `active` means the use state is unsuspended. Campus access will also require the validation and authorization checks defined in a later mission.
+Correction and refusal require a player-facing comment. Only refusals increment the count. The first two allow revision and resubmission. The third archives the sheet and releases its slot. Archived sheets require explicit authorization and a free slot to reopen. All other states occupy capacity, including suspended characters unless archived. Total capacity remains five plus one per confirmed active boost. Preserve the full history and all existing character data.
 
-## HU-009A development policy
-
-The [character lifecycle](CHARACTERS.md) uses the existing player, profile and sheet records. During development every existing character occupies one slot, including drafts, refused characters and suspended characters. Owners may edit and submit drafts and sheets awaiting corrections. Submitted, approved and refused sheets are locked. Boost loss preserves all data and use states. The field matrix and transition rules in HU-009A await staff approval before release.
-
-## HU-009B development policy
-
-[Staff review](CHARACTER_REVIEWS.md) applies the provisional submitted-only workflow. An authorized HRP actor can append an approval, correction request or rejection for another player's sheet. Corrections and rejections include a player-facing comment. An authorized student approval or correction request can assign an active House. A later decision may preserve an existing assignment and its review reference. Validation and use status remain independent. The transition and visibility policy awaits staff approval.
+Staff assigns a House only on final student approval. The owner cannot assign Houses or change reputation. The existing development behavior is documented in [player characters](CHARACTERS.md) and [character reviews](CHARACTER_REVIEWS.md). These contracts and the database require a later implementation before the target rules take effect.
 
 ## Open decisions
 
-- Which validation or use states consume a character slot, how excess characters are selected, timing and reactivation, and boost exceptions.
-- Staff authorization, separation of duties, editing an approved sheet, resubmission and retention of past decisions.
-- Field visibility and presentation, minimum-length rules for personality, physical description and backstory, and procedures for handling content warnings and face claims.
+- Excess-character selection and timing, reactivation and any boost exceptions remain open. Slot-consuming states are defined in the approved target.
+- Staff reopening authority, separation of duties, editing an approved sheet, and legacy reconciliation.
+- Field applicability, visibility, the editorial line-count convention, content warnings and face claims. The required line ranges are confirmed.
 - Club eligibility for non-students, membership applications and leadership, swimming's leadership title, and confirmation of the law club.
 - Reputation scoring and ranking rules, academic rules, and the Gossip, relationships and messaging models.

@@ -50,6 +50,10 @@ Keep reviews and boost confirmations as historical records. Clients have no dire
 - A composite foreign key ties the copied capacity key to the current club row. PostgreSQL locks the referenced key against concurrent changes. Updating a capacity cascades the key to memberships and reapplies their seat checks. A change that would invalidate a reservation fails atomically. Preassign eligible seats or release affected memberships before reducing a cap. When writing several memberships in one transaction, use consistent character and club ordering and retry a transaction aborted for deadlock or serialization.
 - `test:concurrency` runs separate PostgreSQL sessions and verifies that an uncommitted reservation blocks a competing write. It tests both the second character slot and the tenth BDE seat on a freshly reset local database.
 
+## Proposed HU-009F-A evolution
+
+Preserve existing identities, references, reviews and use states. The target needs explicit archival metadata, hybrid sheet mode, private external review evidence and append-only reopening audit records. Existing decisions remain the source for historical refusal counts. A later migration must reconcile legacy counts and House references before changing capacity behavior. The migration, compatibility and concurrency proposal is documented in [character policy](CHARACTER_POLICY.md#migration-and-api-proposal).
+
 ## Migrations
 
 | File                                              | Contents                                                                                               |

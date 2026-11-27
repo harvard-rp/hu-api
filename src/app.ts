@@ -1,15 +1,13 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
-import type { Context } from 'hono';
 import { secureHeaders } from 'hono/secure-headers';
 
-import { browserCors } from './config/cors';
+import { authenticatedBrowserCors, browserCors } from './config/cors';
+import { errorBody } from './lib/http-contract';
+import { noStore } from './middleware/authentication';
 import { requestContext, type AppEnv } from './middleware/request-context';
 import { healthRoute } from './routes/health';
+import { getMe, meRoute } from './routes/me';
 import { openApiConfig, openApiRoute } from './routes/openapi';
-
-function errorBody(c: Context<AppEnv>, code: string, message: string) {
-  return { error: { code, message, requestId: c.var.requestId } };
-}
 
 export function createApp() {
   const app = new OpenAPIHono<AppEnv>();
@@ -30,6 +28,7 @@ export function createApp() {
   for (const { path } of [healthRoute, openApiRoute]) {
     app.use(path, browserCors);
   }
+  app.use(meRoute.path, noStore, authenticatedBrowserCors);
 
   app.notFound((c) =>
     c.json(errorBody(c, 'NOT_FOUND', 'Route not found.'), 404),
@@ -42,12 +41,18 @@ export function createApp() {
   );
 
   app.openapi(healthRoute, (c) =>
-    c.json({ status: 'ok', service: 'hu-api' }, 200),
+    c.json({ status: 'ok', service: 'hu-api' } as const, 200),
   );
 
   app.openapi(openApiRoute, (c) =>
     c.json(app.getOpenAPIDocument(openApiConfig), 200),
   );
+  app.openAPIRegistry.registerComponent('securitySchemes', 'SupabaseBearer', {
+    type: 'http',
+    scheme: 'bearer',
+    bearerFormat: 'JWT',
+  });
+  app.openapi(meRoute, getMe);
 
   return app;
 }

@@ -1,6 +1,6 @@
 # Database schema
 
-HU-004 uses PostgreSQL 17. `public` holds catalogs and basic RP profile fields that may be considered for future publication. `private` holds identities, detailed sheets, HRP actor records and operational data. All 11 tables have RLS and no client policies. Grants are explicitly revoked from `PUBLIC`, `anon`, `authenticated` and `service_role` on these objects. The API configuration exposes only the `public` schema. The generated TypeScript file also describes `private` for trusted code. Types do not grant access.
+HU-004 uses PostgreSQL 17. `public` holds catalogs and basic RP profile fields that may be considered for future publication. `private` holds identities, detailed sheets, HRP actor records and operational data. All domain tables enable RLS. HU-005 adds a single invoker-rights RPC in `public`, with column-scoped grants and policies on three private tables. The Data API exposes only `public`. The generated TypeScript file also describes `private` for trusted code. See [Permissions](PERMISSIONS.md) for the client access boundary.
 
 ## Entity relationships
 
@@ -9,6 +9,7 @@ erDiagram
     direction TB
     AUTH_USERS o|--o| PLAYERS : "optional Auth link"
     PLAYERS ||--o| STAFF_ACTORS : "may record HRP actions"
+    STAFF_ACTORS ||--o{ STAFF_CAPABILITIES : holds
     PLAYERS ||--o{ BOOST_CONFIRMATIONS : receives
     STAFF_ACTORS ||--o{ BOOST_CONFIRMATIONS : confirms
     PLAYERS ||--o{ CHARACTERS : owns
@@ -26,7 +27,9 @@ erDiagram
 | Object                                             | Purpose and integrity                                                                                                                                                                                  |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `private.players`                                  | UUID identity, canonical unsigned 64-bit Discord snowflake stored as text, optional unique `auth.users` link. Removing the external Auth user clears the link.                                         |
-| `private.staff_actors`                             | Independently registered HRP actors. Playing a `staff_member` does not create an actor record. HU-005 will define functional permissions and how they are granted or revoked.                          |
+| `private.staff_actors`                             | Independently registered HRP actors. Playing a `staff_member` does not create an actor record. Functional capabilities are granted separately by a trusted operator.                                   |
+| `private.staff_capabilities`                       | Effective grants per actor, limited to known capability codes.                                                                                                                                         |
+| `public.current_player_context()`                  | Invoker-rights RPC returning only the linked caller’s player ID, capabilities, and owned character states.                                                                                             |
 | `private.boost_confirmations`                      | An absolute count, source, actor, reason and timestamp per confirmation. Trusted writers append a row for each change. The identity revision orders entries, including entries that share a timestamp. |
 | `private.player_slot_capacity`                     | Invoker-rights view calculating five plus the latest confirmed count. It accesses no unaudited Discord data. There is no capacity-based trigger on character writes while counted states remain open.  |
 | `private.characters`                               | Owner, kind, independent validation and use states, optional program and scholarship data, and references to the current decision and House assignment. An approved student requires a House.          |
@@ -36,7 +39,7 @@ erDiagram
 | `public.houses`, `public.programs`, `public.clubs` | Catalogs with stable UUIDs, slugs and activation flags. The seeded BDE identity and slug are tied to a capacity of ten.                                                                                |
 | `private.club_memberships`                         | One row per character and club, with join time, use state, optional responsibility and active seat reservations.                                                                                       |
 
-Keep reviews and boost confirmations as historical records. HU-004 has no permission path for clients to write history. A later trusted writer should append a decision and update the character's current reference in one transaction. The current decision and current House can refer to different reviews. Approval and House assignment are validated by ordinary foreign keys and checks. The only trigger function sets `updated_at`. It runs with invoker rights, an empty search path and no execute privilege for client roles.
+Keep reviews and boost confirmations as historical records. Clients have no permission path to write history. A later trusted writer should append a decision and update the character's current reference in one transaction. The current decision and current House can refer to different reviews. Approval and House assignment are validated by ordinary foreign keys and checks. The only trigger function sets `updated_at`. It runs with invoker rights, an empty search path and no execute privilege for client roles.
 
 ## Club membership transactions
 
@@ -54,5 +57,6 @@ Keep reviews and boost confirmations as historical records. HU-004 has no permis
 | `20261126231850_characters_and_reviews.sql`       | Character records, profiles, sheets and review history.                                       |
 | `20261126231852_club_memberships.sql`             | Membership state, reservations, duplicate prevention and capacity integrity.                  |
 | `20261126231853_reference_catalogs.sql`           | The 12 Houses, 15 programs and 33 clubs and organizations from the server reference catalogs. |
+| `20261126235738_player_context_authorization.sql` | HRP capability grants, RLS policies and the bounded current-player RPC.                       |
 
 Reference catalog data is versioned in migrations so it is available wherever the schema is built. Test fixtures are synthetic and live in rollback-only pgTAP transactions or in isolated concurrency probes that clean up their own data. See [business rules](BUSINESS_RULES.md) for unresolved policy decisions.

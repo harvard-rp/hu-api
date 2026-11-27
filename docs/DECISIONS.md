@@ -29,3 +29,7 @@ Pin Supabase JS 2.119.2 and create a stateless publishable-key client per reques
 Separate player identity, HRP actors, character review, use status and candidate public profile fields. Keep the Data API closed to all new domain objects until functional policies are specified in HU-005. Record boost counts as absolute confirmations and derive the allowed slot count from the latest entry. Use constrained, unique reservations for active club slots and seats. The database enforces both caps without a read-count race or a privileged function.
 
 Version the server reference catalogs in migrations and keep synthetic test data in database tests. Check pinned CLI type generation for schema drift after a clean reset. See [database schema](DATABASE_SCHEMA.md) and [business rules](BUSINESS_RULES.md).
+
+## HU-005 — Verified bearer identity and bounded player context
+
+Use the configured project's Supabase Auth service to verify the request token before reading player data. A separate Data API client keeps the caller's JWT and publishable key. Authorize in PostgreSQL through a parameterless invoker-rights RPC with column privileges and ownership policies. Resolve HRP grants from the private capability table on each read. The HTTP contract is limited to `GET /api/v1/me`. See [authentication](AUTHENTICATION.md) and [permissions](PERMISSIONS.md).

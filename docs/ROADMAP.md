@@ -18,12 +18,12 @@ Model players, boost confirmations, fictional character sheets, reviews and univ
 
 ## HU-005 — Functional access policies
 
-Define staff and player authorization, the Auth link and scoped policies for domain reads and writes. Resolve open workflow decisions before exposing write operations.
+Verify Supabase Auth bearer tokens and serve a read-only player context with explicit HRP capabilities and owned character eligibility. The [authorization boundary](PERMISSIONS.md) leaves grant management and character writes to later workflows.
 
-## Future mission candidates
+## Upcoming work
 
-- Specify Discord OAuth2, its integration with Supabase Auth and session handling.
-- Define the initial `/api/v1` domain contracts and authorization rules.
+- HU-007 will integrate Discord OAuth2, securely create or link player accounts, and define client session handling.
+- HU-009 will add authorized character creation and review operations once the remaining workflow decisions are settled.
 - Plan the first Cloudflare release and the approved browser origins.
 
 The architect assigns mission identifiers, scope and acceptance criteria before implementation.

@@ -69,6 +69,10 @@ jobs:
         timeout-minutes: 2
         run: pnpm test:concurrency
 
+      - name: Verify HTTP authorization with local Supabase Auth
+        timeout-minutes: 3
+        run: pnpm test:auth:local
+
       - name: Generate PostgreSQL TypeScript types
         timeout-minutes: 5
         run: pnpm supabase:types

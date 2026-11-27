@@ -10,8 +10,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "build": "wrangler deploy --dry-run --outdir dist && wrangler deploy tests/fixtures/supabase-worker.ts --dry-run --outdir dist/supabase-check",
-    "test": "vitest run",
-    "test:watch": "vitest watch",
+    "test": "vitest run --exclude tests/auth-local.test.mjs",
+    "test:watch": "vitest watch --exclude tests/auth-local.test.mjs",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
     "format": "prettier --write .",
@@ -24,7 +24,8 @@
     "supabase:reset": "node scripts/supabase-local.mjs reset",
     "supabase:types": "node scripts/supabase-local.mjs types",
     "test:integration": "node scripts/supabase-local.mjs test",
-    "test:concurrency": "node tests/club-concurrency.mjs"
+    "test:concurrency": "node tests/club-concurrency.mjs",
+    "test:auth:local": "vitest run tests/auth-local.test.mjs"
   },
   "dependencies": {
     "@hono/zod-openapi": "1.6.3",

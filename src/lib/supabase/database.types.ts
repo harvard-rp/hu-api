@@ -365,6 +365,33 @@ export type Database = {
           },
         ];
       };
+      staff_capabilities: {
+        Row: {
+          capability: Database['private']['Enums']['staff_capability'];
+          granted_at: string;
+          staff_actor_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          capability: Database['private']['Enums']['staff_capability'];
+          granted_at?: string;
+          staff_actor_id: string;
+        };
+        Update: {
+          capability?: Database['private']['Enums']['staff_capability'];
+          granted_at?: string;
+          staff_actor_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'staff_capabilities_staff_actor_id_fkey';
+            columns: ['staff_actor_id'];
+            isOneToOne: false;
+            referencedRelation: 'staff_actors';
+            referencedColumns: ['player_id'];
+          },
+        ];
+      };
     };
     Views: {
       player_slot_capacity: {
@@ -384,6 +411,7 @@ export type Database = {
       character_kind: 'student' | 'teacher' | 'staff_member' | 'citizen';
       character_use_status: 'active' | 'suspended';
       club_membership_status: 'active' | 'inactive';
+      staff_capability: 'characters.review' | 'boosts.manage';
       validation_status:
         'draft' | 'submitted' | 'changes_requested' | 'approved' | 'rejected';
     };
@@ -516,7 +544,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      current_player_context: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
     };
     Enums: {
       [_ in never]: never;
@@ -650,6 +681,7 @@ export const Constants = {
       character_kind: ['student', 'teacher', 'staff_member', 'citizen'],
       character_use_status: ['active', 'suspended'],
       club_membership_status: ['active', 'inactive'],
+      staff_capability: ['characters.review', 'boosts.manage'],
       validation_status: [
         'draft',
         'submitted',

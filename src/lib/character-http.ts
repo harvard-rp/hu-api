@@ -45,7 +45,7 @@ const failures = {
   invalid_attestation: [
     422,
     'INVALID_EXTERNAL_ATTESTATION',
-    'Attest to manual review only for an external sheet with an available viewing link.',
+    'External approval or refusal requires attested consultation. Inline reviews do not accept an attestation.',
   ],
   not_submitted: [
     409,

@@ -56,3 +56,7 @@ Every legacy character defaults to `inline`. The backfill counts immutable `reje
 | Staff archives and context   | Gate staff archive UI on `characters.reopen`, independently of `characters.review`. Use paginated `GET /api/v1/staff/characters/archives` and `GET /api/v1/staff/characters/{characterId}/archive`. Add `characters.reopen` to the context schema. `/me` and bootstrap share the current, nonarchived character projection.                       |
 
 An archived sheet can be replaced by a new draft if the player has capacity. The workflow cannot reliably infer that two fictional characters or external documents are the same. A future enforcement policy needs a staff decision and a separate threat assessment. External document changes and lost access after review remain manually handled.
+
+## HU-009F-D external evidence compatibility
+
+The third migration, `20261127150002_external_correction_evidence.sql`, preserves existing evidence and allows external corrections to record the URL and examined revision with `attested: false`. An earlier strict frontend or backend decoder accepts only `attested: true` for a non-null evidence object. Once a false record exists, those versions cannot reliably read its decision or history. Keep privileged mutations disabled at the API boundary during a mixed rollout. Frontend flags only control navigation and rendering. Coordinate the app and RPC rollout, and recover with compatible readers that preserve the new evidence shape. Never flip a stored attestation to true during rollback.

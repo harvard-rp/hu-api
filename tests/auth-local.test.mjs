@@ -880,15 +880,47 @@ it('archives the third refusal and serializes a staff reopening against the last
     values ('${actor.playerId}', 'characters.review') on conflict do nothing;`);
 
   await submit();
+  for (const decision of ['approved', 'rejected']) {
+    expect(
+      (
+        await api(staffReviewPath(sheet.id), actorToken, 'POST', {
+          expectedRevision: sheet.revision,
+          decision,
+          comment: 'Fixture feedback',
+        })
+      ).status,
+    ).toBe(422);
+  }
+  const examinedRevision = sheet.revision;
+  const inaccessible = await directStaff(actorToken, {
+    operation: 'decide',
+    target_id: sheet.id,
+    decision_input: {
+      expectedRevision: examinedRevision,
+      decision: 'changes_requested',
+      comment: 'Document inaccessible',
+    },
+  });
+  expect(await inaccessible.json()).toMatchObject({
+    status: 'ok',
+    data: {
+      refusalCount: 0,
+      review: {
+        examinedRevision,
+        comment: 'Document inaccessible',
+        externalEvidence: { url: externalUrl, attested: false },
+      },
+    },
+  });
   expect(
-    (
-      await api(staffReviewPath(sheet.id), actorToken, 'POST', {
-        expectedRevision: sheet.revision,
-        decision: 'changes_requested',
-        comment: 'Fixture feedback',
-      })
-    ).status,
-  ).toBe(422);
+    await (await api(ownerReviewPath(sheet.id), teacherToken)).json(),
+  ).toMatchObject([
+    {
+      examinedRevision,
+      externalEvidence: { url: externalUrl, attested: false },
+    },
+  ]);
+  sheet = await (await api(details, teacherToken)).json();
   const decide = async (decision) => {
     const payload = {
       expectedRevision: sheet.revision,
@@ -915,7 +947,6 @@ it('archives the third refusal and serializes a staff reopening against the last
     sheet = await (await api(details, teacherToken)).json();
     return outcome;
   };
-  expect((await decide('changes_requested')).refusalCount).toBe(0);
   for (const count of [1, 2, 3]) {
     await submit();
     const result = await decide('rejected');

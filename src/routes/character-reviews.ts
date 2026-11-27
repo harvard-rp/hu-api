@@ -39,7 +39,7 @@ export const review = z.strictObject({
   externalEvidence: z
     .strictObject({
       url: z.string(),
-      attested: z.literal(true),
+      attested: z.boolean(),
     })
     .nullable(),
 });
@@ -142,7 +142,7 @@ const decisionRoute = createRoute({
   operationId: 'decideStaffCharacterReview',
   summary: 'Record a staff decision on a submitted sheet',
   description:
-    'The expected revision is required. Give the player a comment when requesting corrections or rejecting a sheet. Supply houseId to assign an active House to a student on approval. Omit houseId to retain a legacy assignment. For external sheets, submit externalAttested: true after manually reviewing the document.',
+    'The expected revision is required. Give the player a comment when requesting corrections or rejecting a sheet. Supply houseId to assign an active House to a student on approval. Omit houseId to retain a legacy assignment. External approvals and refusals require manual consultation attested with externalAttested: true. For a correction the attestation is optional. Inline reviews have no attestation.',
   request: { query, params, body: body(decisionInput) },
   responses: {
     ...staffErrors,

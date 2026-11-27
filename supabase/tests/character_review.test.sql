@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path to public, extensions;
-select plan(67);
+select plan(68);
 
 create function pg_temp.review_id(prefix text, n integer) returns uuid language sql immutable as $$
   select (prefix || '090000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid
@@ -26,8 +26,9 @@ select pg_temp.review_id('dd', n), pg_temp.review_id('cc', case when n = 1 then 
 from generate_series(1, 7) n;
 insert into public.character_profiles (character_id, first_name, last_name)
 select pg_temp.review_id('dd', n), 'Fictional', 'Example' from generate_series(1, 7) n;
-insert into private.character_sheets (character_id, personality, physical_description, face_claim, backstory)
-select pg_temp.review_id('dd', n), 'Curious', 'Fictional appearance', 'Fictional art', 'Synthetic private narrative'
+insert into private.character_sheets (character_id, age, birth_date, occupation, personality, physical_description, face_claim, backstory)
+select pg_temp.review_id('dd', n), 21, '2005-03-05'::date, 'Fictional occupation',
+  repeat(E'Curious\n', 5), repeat(E'Fictional appearance\n', 5), 'Fictional art', repeat(E'Synthetic private narrative\n', 10)
 from generate_series(1, 7) n;
 insert into public.houses (id, name, slug, is_active)
 values (pg_temp.review_id('ee', 1), 'Synthetic inactive House', 'synthetic-review-fixture', false);
@@ -84,7 +85,7 @@ select is(pg_temp.staff_call('queue', size => 3, cursor => pg_temp.review_id('dd
 select is(pg_temp.staff_call('queue', cursor => pg_temp.review_id('dd', 4))#>>'{data,items,0,id}',
   pg_temp.review_id('dd', 5)::text, 'cursor advances to the next sheet');
 select ok(not (pg_temp.staff_call('queue')#>'{data,items,0}' ? 'backstory'), 'queue never returns a narrative');
-select is(pg_temp.staff_call('detail', 3)#>>'{data,backstory}', 'Synthetic private narrative', 'authorized staff can read submitted detail');
+select is(pg_temp.staff_call('detail', 3)#>>'{data,backstory}', repeat(E'Synthetic private narrative\n', 10), 'authorized staff can read submitted detail');
 select is(pg_temp.staff_call('detail', 2)->>'status', 'not_found', 'staff cannot read drafts');
 select is(pg_temp.staff_call('detail', 1)->>'status', 'not_found', 'staff route cannot read its actor’s own sheet');
 select is(pg_temp.staff_call('history', 2)->>'status', 'not_found', 'staff history does not reveal a draft');
@@ -135,10 +136,18 @@ select is(pg_temp.owner_call(3, 1)->>'status', 'not_found', 'staff capability do
 select is(pg_temp.owner_call(3, 3)->>'status', 'not_found', 'another owner cannot see a decision');
 select is(pg_temp.staff_call('decide', 5, pg_temp.decision(5, 'approved'))->>'status', 'ok', 'a teacher can be approved without a House');
 
-create temp table corrected_review as
-select pg_temp.staff_call('decide', 4, pg_temp.decision(4, 'changes_requested',
-  jsonb_build_object('houseId', (select id from active_review_houses where n = 2), 'comment', 'Clarify the fictional timeline.'))) as payload;
-select is((select payload#>>'{data,review,decision}' from corrected_review), 'changes_requested', 'requests corrections with a House');
+select is(pg_temp.staff_call('decide', 4, pg_temp.decision(4, 'changes_requested',
+  jsonb_build_object('houseId', (select id from active_review_houses where n = 2), 'comment', 'Clarify the fictional timeline.')))->>'status',
+  'invalid_house', 'a correction cannot assign a House');
+
+-- Represent a historical assignment created before the policy migration.
+insert into private.character_reviews (character_id, player_id, reviewer_id, decision, note, assigned_house_id)
+values (pg_temp.review_id('dd', 4), pg_temp.review_id('cc', 2), pg_temp.review_id('cc', 1),
+  'changes_requested', 'Clarify the fictional timeline.', (select id from active_review_houses where n = 2));
+update private.characters c set validation_status = r.decision, current_review_id = r.id,
+  house_id = r.assigned_house_id, house_review_id = r.id
+from private.character_reviews r where c.id = pg_temp.review_id('dd', 4) and r.character_id = c.id;
+select is(pg_temp.owner_call(4)#>>'{data,0,decision}', 'changes_requested', 'the historical correction remains readable');
 select is(pg_temp.owner_call(4)#>>'{data,0,comment}', 'Clarify the fictional timeline.', 'player receives the correction comment');
 create function pg_temp.resubmit_for_review(target integer) returns jsonb language plpgsql security invoker as $$
 declare result jsonb;
@@ -165,7 +174,7 @@ select is(jsonb_array_length(pg_temp.owner_call(4)->'data'), 2, 'both decisions 
 select is(pg_temp.owner_call(4)#>'{data,1,assignedHouseId}', 'null'::jsonb, 'the later decision does not claim it assigned the House again');
 select is(pg_temp.staff_call('decide', 6, pg_temp.decision(6, 'rejected', '{"comment":"Fictional example."}'))->>'status',
   'ok', 'rejection records a player comment');
-select is(pg_temp.resubmit_for_review(6)->>'status', 'character_locked', 'a refused sheet cannot be resubmitted');
+select is(pg_temp.resubmit_for_review(6)->>'status', 'ok', 'the first refusal can be resubmitted');
 
 alter table private.characters add constraint review_fixture_fail_update
   check (id <> 'dd090000-0000-4000-8000-000000000007' or validation_status = 'submitted');

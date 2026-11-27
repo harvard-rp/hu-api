@@ -124,6 +124,10 @@ select is(pg_temp.character_call('edit', d.id, (select rev from previous_revisio
 select is(pg_temp.character_call('submit', d.id, (select rev from previous_revision))->>'status',
   'revision_conflict', 'a stale client cannot submit unseen changes') from lifecycle_draft d;
 
+update lifecycle_result set result = (select pg_temp.character_call('edit', d.id, d.rev, jsonb_build_object(
+  'age', 21, 'birthDate', '2005-03-05', 'personality', repeat(E'Curious\r', 5),
+  'physicalDescription', repeat(E'Tall\r\n', 5), 'backstory', repeat(E'Fictional past\n', 10)
+)) from lifecycle_draft d);
 update lifecycle_result set result = (select pg_temp.character_call('submit', d.id, d.rev) from lifecycle_draft d);
 select is((select result#>>'{data,validationStatus}' from lifecycle_result), 'submitted', 'submit a complete student');
 select is((select result#>'{data,houseId}' from lifecycle_result), 'null'::jsonb, 'submission does not assign a House');
@@ -140,7 +144,7 @@ from private.character_reviews r where c.id = r.character_id;
 select isnt(pg_temp.character_call('detail', d.id)#>>'{data,revision}', d.rev::text,
   'a trusted character-row update also invalidates earlier revisions') from lifecycle_draft d;
 update lifecycle_result set result = (select pg_temp.character_call('detail', id) from lifecycle_draft);
-update lifecycle_result set result = (select pg_temp.character_call('edit', id, rev, '{"backstory":"A corrected synthetic past"}') from lifecycle_draft);
+update lifecycle_result set result = (select pg_temp.character_call('edit', id, rev, jsonb_build_object('backstory', repeat(E'A corrected synthetic past\n', 10))) from lifecycle_draft);
 select is((select result->>'status' from lifecycle_result), 'ok', 'changes_requested sheets can be edited');
 update lifecycle_result set result = (select pg_temp.character_call('submit', id, rev) from lifecycle_draft);
 select is((select result#>>'{data,validationStatus}' from lifecycle_result), 'submitted', 'resubmit a corrected sheet');
@@ -165,8 +169,9 @@ select is(pg_temp.character_call('edit', d.id, d.rev, '{"nickname":"Locked"}')->
   'character_locked', 'approved sheets cannot be edited') from lifecycle_draft d;
 update private.characters c set validation_status = r.decision, current_review_id = r.id
   from private.character_reviews r where c.id = r.character_id and r.decision = 'rejected';
-select is(pg_temp.character_call('submit', d.id, d.rev)->>'status',
-  'character_locked', 'rejected sheets cannot be submitted again') from lifecycle_draft d;
+select is(pg_temp.character_call('submit', d.id,
+  (select revision from private.characters where id = d.id))->>'status',
+  'ok', 'an unarchived refused sheet can be submitted with the current revision') from lifecycle_draft d;
 
 alter table private.character_sheets add constraint fixture_fail_sheet_write
   check (backstory <> 'Synthetic constraint failure');

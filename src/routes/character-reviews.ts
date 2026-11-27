@@ -1,6 +1,5 @@
 import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 
-import { staffReviewBrowserCors } from '../config/cors';
 import {
   body,
   commonErrors,
@@ -20,7 +19,6 @@ import {
   rpString,
   submitDraft,
 } from '../lib/character-sheet';
-import { noStore } from '../middleware/authentication';
 import type { AppEnv } from '../middleware/request-context';
 
 const reviewDecision = z.enum(['approved', 'changes_requested', 'rejected']);
@@ -29,22 +27,33 @@ const decisionInput = submitDraft.extend({
   decision: reviewDecision,
   comment: rpString(2000).optional(),
   houseId: z.uuid().optional(),
+  externalAttested: z.boolean().optional(),
 });
-const review = z.strictObject({
+export const review = z.strictObject({
   decision: reviewDecision,
   reviewedAt: dateTime,
   comment: z.string().nullable(),
   assignedHouseId: z.uuid().nullable(),
+  examinedRevision: z.uuid().nullable(),
+  archivedCharacter: z.boolean(),
+  externalEvidence: z
+    .strictObject({
+      url: z.string(),
+      attested: z.literal(true),
+    })
+    .nullable(),
 });
 const history = z.array(review);
 const decisionResult = z.strictObject({
   characterId: z.uuid(),
   revision: z.uuid(),
   houseId: z.uuid().nullable(),
+  refusalCount: z.number().int().nonnegative(),
+  archivedAt: dateTime.nullable(),
   review,
 });
 
-const pagination = z.strictObject({
+export const pagination = z.strictObject({
   limit: z
     .string()
     .regex(/^(?:[1-9]|[1-4][0-9]|50)$/)
@@ -133,7 +142,7 @@ const decisionRoute = createRoute({
   operationId: 'decideStaffCharacterReview',
   summary: 'Record a staff decision on a submitted sheet',
   description:
-    'The expected revision is required. Give the player a comment when requesting corrections or rejecting a sheet. Supply houseId to assign an active House to a student on approval or a correction request. Omit houseId to retain any existing assignment.',
+    'The expected revision is required. Give the player a comment when requesting corrections or rejecting a sheet. Supply houseId to assign an active House to a student on approval. Omit houseId to retain a legacy assignment. For external sheets, submit externalAttested: true after manually reviewing the document.',
   request: { query, params, body: body(decisionInput) },
   responses: {
     ...staffErrors,
@@ -148,6 +157,7 @@ const decisionRoute = createRoute({
       'comment_required',
       'house_required',
       'invalid_house',
+      'invalid_attestation',
     ),
   },
 });
@@ -166,7 +176,6 @@ const ownerHistoryRoute = createRoute({
 });
 
 export function registerCharacterReviewRoutes(app: OpenAPIHono<AppEnv>) {
-  app.use(`${staffPath}/*`, noStore, staffReviewBrowserCors);
   app.openapi(
     queueRoute,
     async (c) => {

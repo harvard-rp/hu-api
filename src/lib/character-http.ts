@@ -32,6 +32,21 @@ const failures = {
     'CHARACTER_REVIEW_FORBIDDEN',
     'Character review access is required.',
   ],
+  reopening_forbidden: [
+    403,
+    'CHARACTER_REOPENING_FORBIDDEN',
+    'Character reopening access is required.',
+  ],
+  reopening_conflict: [
+    409,
+    'CHARACTER_REOPENING_CONFLICT',
+    'A request is already pending or this request cannot be processed.',
+  ],
+  invalid_attestation: [
+    422,
+    'INVALID_EXTERNAL_ATTESTATION',
+    'Attest to manual review only for an external sheet with an available viewing link.',
+  ],
   not_submitted: [
     409,
     'CHARACTER_NOT_SUBMITTED',
@@ -60,7 +75,7 @@ const failures = {
   character_locked: [
     409,
     'CHARACTER_LOCKED',
-    'Only drafts and sheets awaiting corrections can be changed or submitted.',
+    'Only drafts, sheets in correction and unarchived refusals can be changed or submitted.',
   ],
   revision_conflict: [
     409,

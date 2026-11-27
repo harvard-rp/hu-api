@@ -1,5 +1,8 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { once } from 'node:events';
+import { createInterface } from 'node:readline';
+import { setTimeout as delay } from 'node:timers/promises';
 import process from 'node:process';
 
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
@@ -38,31 +41,68 @@ let unlinkedToken;
 let newcomerToken;
 let seeded = false;
 
+const psql = [
+  'exec',
+  '-i',
+  '--user',
+  'postgres',
+  'supabase_db_hu-api',
+  'psql',
+  '-XqAt',
+  '-v',
+  'ON_ERROR_STOP=1',
+  '-h',
+  '/var/run/postgresql',
+  '-U',
+  'postgres',
+  '-d',
+  'postgres',
+];
+
 function sql(command) {
   try {
-    execFileSync(
-      'docker',
-      [
-        'exec',
-        '-i',
-        '--user',
-        'postgres',
-        'supabase_db_hu-api',
-        'psql',
-        '-XqAt',
-        '-v',
-        'ON_ERROR_STOP=1',
-        '-h',
-        '/var/run/postgresql',
-        '-U',
-        'postgres',
-        '-d',
-        'postgres',
-      ],
-      { input: command, stdio: ['pipe', 'ignore', 'pipe'], timeout: 15000 },
-    );
+    return execFileSync('docker', psql, {
+      input: command,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      encoding: 'utf8',
+      timeout: 15000,
+    }).trim();
   } catch {
     throw new Error('Local Auth test database fixture query failed.');
+  }
+}
+
+async function whileBlocked(lock, startRequest, beforeCommit) {
+  const client = spawn('docker', psql, { stdio: ['pipe', 'pipe', 'ignore'] });
+  const lines = createInterface({ input: client.stdout });
+  const exited = once(client, 'close');
+  let response;
+  try {
+    const line = once(lines, 'line');
+    client.stdin.write(`begin; set idle_in_transaction_session_timeout = '12s';
+      ${lock}; select pg_backend_pid();\n`);
+    const pid = Number(
+      await Promise.race([line.then(([value]) => value), exited.then(() => 0)]),
+    );
+    expect(pid).toBeGreaterThan(0);
+    response = startRequest();
+    const deadline = Date.now() + 3500;
+    let blocked;
+    do {
+      blocked =
+        sql(`select exists (select 1 from pg_stat_activity
+        where wait_event_type = 'Lock' and ${pid} = any(pg_blocking_pids(pid)));`) ===
+        't';
+      if (!blocked) await delay(25);
+    } while (!blocked && Date.now() < deadline);
+    expect(blocked).toBe(true);
+    client.stdin.end(`${beforeCommit}; commit;\n`);
+    expect((await exited)[0]).toBe(0);
+    return await response;
+  } finally {
+    lines.close();
+    if (!client.stdin.writableEnded) client.stdin.end('rollback;\n');
+    await Promise.allSettled([exited, response]);
   }
 }
 
@@ -86,21 +126,25 @@ async function signIn({ email, password }) {
 }
 
 function api(path, token, method = 'GET', fields) {
-  return app.request(
-    path,
-    {
-      method,
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(fields ? { 'Content-Type': 'application/json' } : {}),
-      },
-      body: fields ? JSON.stringify(fields) : undefined,
+  const init = {
+    method,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(fields ? { 'Content-Type': 'application/json' } : {}),
     },
-    {
-      SUPABASE_URL: url,
-      SUPABASE_PUBLISHABLE_KEY: publishableKey,
-    },
-  );
+    body: fields ? JSON.stringify(fields) : undefined,
+  };
+  if (process.env.HU_TEST_WORKER === '1') {
+    return globalThis.fetch('http://127.0.0.1:8787' + path, {
+      ...init,
+      signal: globalThis.AbortSignal.timeout(10000),
+      redirect: 'error',
+    });
+  }
+  return app.request(path, init, {
+    SUPABASE_URL: url,
+    SUPABASE_PUBLISHABLE_KEY: publishableKey,
+  });
 }
 
 beforeAll(async () => {
@@ -198,7 +242,10 @@ afterAll(() => {
     if (seeded)
       sql(`
       begin;
-      update private.characters set current_review_id = null, house_review_id = null, house_id = null, validation_status = 'draft'
+      delete from private.character_reopen_requests where player_id in ('${actor.playerId}', '${teacher.playerId}');
+      delete from private.boost_confirmations where confirmed_by = '${actor.playerId}';
+      update private.characters set current_review_id = null, house_review_id = null, house_id = null,
+        validation_status = 'draft', archived_at = null
         where player_id in ('${actor.playerId}', '${teacher.playerId}');
       delete from private.character_reviews where reviewer_id = '${actor.playerId}';
       delete from private.character_sheets s using private.characters c
@@ -527,8 +574,12 @@ it('writes and submits an owned sheet through real Auth and PostgREST', async ()
       api(details, actorToken, 'PATCH', {
         expectedRevision: draft.revision,
         lastName,
-        personality: 'Inventive',
-        physicalDescription: 'A fictional description',
+        personality: 'Inventive\r'.repeat(5),
+        physicalDescription: 'A fictional description\r\n'.repeat(5),
+        backstory: 'A fictional past\n'.repeat(10),
+        age: 24,
+        birthDate: '2002-01-01',
+        occupation: 'Archivist',
         faceClaim: 'A fictional illustration',
       }),
     ),
@@ -736,11 +787,16 @@ it('checks live reviewer authority and isolates direct review history', async ()
       characterId: ownerFixture,
       revision: expect.any(String),
       houseId: house.id,
+      refusalCount: 0,
+      archivedAt: null,
       review: {
         decision: 'approved',
         reviewedAt: expect.any(String),
         comment: approve.comment,
         assignedHouseId: house.id,
+        examinedRevision: draft.revision,
+        archivedCharacter: false,
+        externalEvidence: null,
       },
     });
     expect(recorded.revision).not.toBe(draft.revision);
@@ -794,6 +850,309 @@ it('checks live reviewer authority and isolates direct review history', async ()
     );
   }
 });
+
+it('archives the third refusal and serializes a staff reopening against the last slot', async () => {
+  const externalUrl =
+    'https://docs.google.com/document/d/synthetic-character/view';
+  const create = await api(charactersPath, teacherToken, 'POST', {
+    kind: 'citizen',
+    sheetMode: 'external',
+    externalUrl,
+    firstName: 'Fictional',
+    lastName: 'Archive',
+    age: 22,
+    birthDate: '2004-02-01',
+    faceClaim: 'Fictional art',
+  });
+  expect(create.status).toBe(201);
+  let sheet = await create.json();
+  const details = `${charactersPath}/${sheet.id}`;
+  const submit = async () => {
+    const response = await api(`${details}/submit`, teacherToken, 'POST', {
+      expectedRevision: sheet.revision,
+    });
+    expect(response.status).toBe(200);
+    sheet = await response.json();
+  };
+  const capacityPath = `${charactersPath}/capacity`;
+  const roomBeforeReview = await (await api(capacityPath, teacherToken)).json();
+  sql(`insert into private.staff_capabilities (staff_actor_id, capability)
+    values ('${actor.playerId}', 'characters.review') on conflict do nothing;`);
+
+  await submit();
+  expect(
+    (
+      await api(staffReviewPath(sheet.id), actorToken, 'POST', {
+        expectedRevision: sheet.revision,
+        decision: 'changes_requested',
+        comment: 'Fixture feedback',
+      })
+    ).status,
+  ).toBe(422);
+  const decide = async (decision) => {
+    const payload = {
+      expectedRevision: sheet.revision,
+      decision,
+      comment: 'Fixture feedback',
+      externalAttested: true,
+    };
+    const response = await api(
+      staffReviewPath(sheet.id),
+      actorToken,
+      'POST',
+      payload,
+    );
+    const outcome = await response.json();
+    expect(response.status).toBe(201);
+    expect(outcome.review).toMatchObject({
+      examinedRevision: sheet.revision,
+      externalEvidence: { url: externalUrl, attested: true },
+    });
+    expect(
+      (await api(staffReviewPath(sheet.id), actorToken, 'POST', payload))
+        .status,
+    ).toBeGreaterThanOrEqual(404);
+    sheet = await (await api(details, teacherToken)).json();
+    return outcome;
+  };
+  expect((await decide('changes_requested')).refusalCount).toBe(0);
+  for (const count of [1, 2, 3]) {
+    await submit();
+    const result = await decide('rejected');
+    expect(result.refusalCount).toBe(count);
+    expect(Boolean(result.archivedAt)).toBe(count === 3);
+    expect(sheet.actions.canEdit).toBe(count < 3);
+    if (count < 3) {
+      const updated = await api(details, teacherToken, 'PATCH', {
+        expectedRevision: sheet.revision,
+        nickname: `Edited after refusal ${count}`,
+      });
+      expect(updated.status).toBe(200);
+      sheet = await updated.json();
+    }
+  }
+  expect((await (await api(capacityPath, teacherToken)).json()).used).toBe(
+    roomBeforeReview.used - 1,
+  );
+  expect(
+    await (await api(charactersPath, teacherToken)).json(),
+  ).not.toContainEqual(expect.objectContaining({ id: sheet.id }));
+  expect(
+    await (await api(`${charactersPath}/archives`, teacherToken)).json(),
+  ).toContainEqual(expect.objectContaining({ id: sheet.id }));
+  expect(
+    (await (await api('/api/v1/me', teacherToken)).json()).characters,
+  ).not.toContainEqual(expect.objectContaining({ id: sheet.id }));
+  expect((await api(details, actorToken)).status).toBe(404);
+  expect(
+    (
+      await api(details, teacherToken, 'PATCH', {
+        expectedRevision: sheet.revision,
+        firstName: 'Locked',
+      })
+    ).status,
+  ).toBe(409);
+  const staffArchives = `${staffQueuePath}/archives`;
+  expect((await api(staffArchives, actorToken)).status).toBe(403);
+
+  for (
+    let used = roomBeforeReview.used - 1;
+    used < roomBeforeReview.total;
+    used++
+  ) {
+    expect(
+      (await api(charactersPath, teacherToken, 'POST', { kind: 'citizen' }))
+        .status,
+    ).toBe(201);
+  }
+  const requestId = randomUUID();
+  const requestBody = {
+    requestId,
+    expectedRevision: sheet.revision,
+    reason: 'Fictional reason',
+  };
+  const ownerRequests = `${details}/reopening-requests`;
+  const staffRequests = `${staffQueuePath}/${sheet.id}/reopening-requests`;
+  expect(
+    (await api(ownerRequests, teacherToken, 'POST', requestBody)).status,
+  ).toBe(201);
+  expect(
+    (await (await api(details, teacherToken)).json()).actions
+      .canRequestReopening,
+  ).toBe(false);
+  expect(
+    (
+      await api(ownerRequests, teacherToken, 'POST', {
+        ...requestBody,
+        requestId: randomUUID(),
+      })
+    ).status,
+  ).toBe(409);
+  expect((await api(ownerRequests, actorToken)).status).toBe(404);
+
+  sql(`insert into private.staff_capabilities (staff_actor_id, capability)
+    values ('${actor.playerId}', 'characters.reopen');`);
+  const archive = await api(staffArchives, actorToken);
+  expect(archive.status).toBe(200);
+  expect((await archive.json()).items).toContainEqual(
+    expect.objectContaining({ id: sheet.id, pendingRequestId: requestId }),
+  );
+  const staffDetail = await api(
+    `${staffQueuePath}/${sheet.id}/archive`,
+    actorToken,
+  );
+  expect(staffDetail.status).toBe(200);
+  expect((await staffDetail.json()).reviews).toHaveLength(4);
+
+  const resolution = {
+    requestId,
+    expectedRevision: sheet.revision,
+    decision: 'accepted',
+    justification: 'Fictional justification',
+  };
+  expect(
+    (await api(staffRequests, actorToken, 'POST', resolution)).status,
+  ).toBe(409);
+  sql(`insert into private.staff_actors (player_id) values ('${teacher.playerId}');
+    insert into private.staff_capabilities (staff_actor_id, capability)
+      values ('${teacher.playerId}', 'characters.reopen');`);
+  try {
+    expect(
+      (await api(staffRequests, teacherToken, 'POST', resolution)).status,
+    ).toBe(404);
+  } finally {
+    sql(`delete from private.staff_capabilities where staff_actor_id = '${teacher.playerId}';
+      delete from private.staff_actors where player_id = '${teacher.playerId}';`);
+  }
+  const confirmation = (confirmed) => `insert into private.boost_confirmations
+    (player_id, confirmed_active_boosts, confirmed_by, reason)
+    values ('${teacher.playerId}', ${confirmed}, '${actor.playerId}', 'Synthetic capacity test')`;
+  const capacityLock = `do $$begin perform private.lock_character_capacity('${teacher.playerId}'); end$$`;
+  const reopenHttp = () => api(staffRequests, actorToken, 'POST', resolution);
+
+  sql(confirmation(1));
+  const reduced = await whileBlocked(capacityLock, reopenHttp, confirmation(0));
+  expect(reduced.status).toBe(409);
+  expect((await reduced.json()).error.code).toBe('CHARACTER_CAPACITY_REACHED');
+
+  sql(confirmation(1));
+  const revoked = await whileBlocked(
+    capacityLock,
+    reopenHttp,
+    `delete from private.staff_capabilities where staff_actor_id = '${actor.playerId}' and capability = 'characters.reopen'`,
+  );
+  expect(revoked.status).toBe(403);
+  sql(`insert into private.staff_capabilities (staff_actor_id, capability)
+    values ('${actor.playerId}', 'characters.reopen');`);
+  const [reopen, createDraft] = await Promise.all([
+    directCharacterRpc('character_reopening', actorToken, {
+      operation: 'resolve',
+      target_id: sheet.id,
+      args: resolution,
+    }),
+    api(charactersPath, teacherToken, 'POST', { kind: 'citizen' }),
+  ]);
+  const result = await reopen.json();
+  expect(
+    [result.status === 'ok', createDraft.status === 201].filter(Boolean),
+  ).toHaveLength(1);
+  if (result.status !== 'ok') {
+    expect(result.status).toBe('capacity_reached');
+    sql(confirmation(2));
+    expect(
+      (await api(staffRequests, actorToken, 'POST', resolution)).status,
+    ).toBe(200);
+  }
+  expect(
+    (await api(staffRequests, actorToken, 'POST', resolution)).status,
+  ).toBe(404);
+  sheet = await (await api(details, teacherToken)).json();
+  expect(sheet).toMatchObject({
+    archivedAt: null,
+    refusalCount: 3,
+    validationStatus: 'draft',
+  });
+  expect(await (await api(ownerRequests, teacherToken)).json()).toMatchObject([
+    { decision: 'accepted' },
+  ]);
+  await submit();
+  const refused = await decide('rejected');
+  expect(refused).toMatchObject({
+    refusalCount: 4,
+    archivedAt: expect.any(String),
+  });
+  expect(
+    await (await api(ownerReviewPath(sheet.id), teacherToken)).json(),
+  ).toHaveLength(5);
+  expect(
+    (await api(ownerRequests, teacherToken, 'POST', requestBody)).status,
+  ).toBe(409);
+  const nextRequest = {
+    ...requestBody,
+    requestId: randomUUID(),
+    expectedRevision: sheet.revision,
+  };
+  expect(
+    (await api(ownerRequests, teacherToken, 'POST', nextRequest)).status,
+  ).toBe(201);
+  const decline = {
+    requestId: nextRequest.requestId,
+    expectedRevision: sheet.revision,
+    decision: 'declined',
+    justification: 'Fictional decline',
+  };
+  const results = await Promise.all([
+    api(staffRequests, actorToken, 'POST', decline),
+    api(staffRequests, actorToken, 'POST', decline),
+  ]);
+  expect(results.map(({ status }) => status).sort()).toEqual([200, 409]);
+  expect(
+    (await (await api(details, teacherToken)).json()).actions
+      .canRequestReopening,
+  ).toBe(true);
+  expect(
+    (await api(ownerRequests, teacherToken, 'POST', nextRequest)).status,
+  ).toBe(409);
+  expect(
+    (await (await api(ownerRequests, teacherToken)).json()).map(
+      ({ decision }) => decision,
+    ),
+  ).toEqual(['accepted', 'declined']);
+  sql(`delete from private.staff_capabilities where staff_actor_id = '${actor.playerId}'
+    and capability = 'characters.reopen';`);
+  expect((await api(staffArchives, actorToken)).status).toBe(403);
+}, 30000);
+
+it('rejects a new House assignment when deactivation commits during the shared-lock wait', async () => {
+  const target = randomUUID();
+  const version = randomUUID();
+  const [house] = await (
+    await api('/api/v1/catalogs/houses', actorToken)
+  ).json();
+  sql(`insert into private.characters (id, player_id, kind, validation_status, revision)
+    values ('${target}', '${teacher.playerId}', 'student', 'submitted', '${version}');
+    insert into private.staff_capabilities (staff_actor_id, capability)
+    values ('${actor.playerId}', 'characters.review') on conflict do nothing;`);
+  try {
+    const outcome = await whileBlocked(
+      `update public.houses set is_active = false where id = '${house.id}'`,
+      () =>
+        api(staffReviewPath(target), actorToken, 'POST', {
+          decision: 'approved',
+          houseId: house.id,
+          expectedRevision: version,
+        }),
+      'select 1',
+    );
+    expect(outcome.status).toBe(422);
+    expect((await outcome.json()).error.code).toBe('INVALID_CHARACTER_HOUSE');
+    expect(
+      await (await api(ownerReviewPath(target), teacherToken)).json(),
+    ).toEqual([]);
+  } finally {
+    sql(`update public.houses set is_active = true where id = '${house.id}';`);
+  }
+}, 12000);
 
 it('commits only one concurrent staff decision across HTTP and direct PostgREST', async () => {
   const target = randomUUID();

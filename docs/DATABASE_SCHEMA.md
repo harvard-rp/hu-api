@@ -50,9 +50,11 @@ Keep reviews and boost confirmations as historical records. Clients have no dire
 - A composite foreign key ties the copied capacity key to the current club row. PostgreSQL locks the referenced key against concurrent changes. Updating a capacity cascades the key to memberships and reapplies their seat checks. A change that would invalidate a reservation fails atomically. Preassign eligible seats or release affected memberships before reducing a cap. When writing several memberships in one transaction, use consistent character and club ordering and retry a transaction aborted for deadlock or serialization.
 - `test:concurrency` runs separate PostgreSQL sessions and verifies that an uncommitted reservation blocks a competing write. It tests both the second character slot and the tenth BDE seat on a freshly reset local database.
 
-## Proposed HU-009F-A evolution
+## Hybrid sheets and archives
 
-Preserve existing identities, references, reviews and use states. The target needs explicit archival metadata, hybrid sheet mode, private external review evidence and append-only reopening audit records. Existing decisions remain the source for historical refusal counts. A later migration must reconcile legacy counts and House references before changing capacity behavior. The migration, compatibility and concurrency proposal is documented in [character policy](CHARACTER_POLICY.md#migration-and-api-proposal).
+Characters hold sheet mode, validated external URL, lifetime refusal count and nullable archival time independently from validation and use status. Capacity counts nonarchived rows. Each new review records the examined revision and archive marker. External reviews additionally store the submitted URL and manual attestation.
+
+`private.character_reopen_requests` binds each request to its character, owner and archive review. A partial unique index allows one pending request per archive cycle. Acceptance clears archive time and the current review pointer, rotates the sheet revision and preserves House, suspension and history. See the [migration guide](CHARACTER_POLICY_MIGRATION.md).
 
 ## Migrations
 
@@ -69,3 +71,5 @@ Preserve existing identities, references, reviews and use states. The target nee
 | `20261127130000_character_review.sql`             | Bounded staff and owner review RPCs, a restricted reviewer role and indexes for the queue and history. |
 
 Reference catalog data is versioned in migrations so it is available wherever the schema is built. Test fixtures are synthetic and live in rollback-only pgTAP transactions or in isolated concurrency probes that clean up their own data. See [business rules](BUSINESS_RULES.md) for unresolved policy decisions.
+
+The two HU-009F-B migrations add the capability enum and then apply the character policy.

@@ -35,6 +35,10 @@ The [review routes](CHARACTER_REVIEWS.md) require an active session and a linked
 
 The `hu_character_review` role cannot log in or bypass RLS. The unexposed `character_review` schema implements the bounded RPC operations with scoped privileges. The role has no privilege to grant capabilities or alter use status. Decisions and House references are updated together, and no reviewer identifiers are projected.
 
+## Archive and reopening boundary
+
+The authenticated invoker facade `public.character_reopening()` delegates to the unexposed review implementation. Owner operations require a live session and linked character. Archives and resolutions for staff require the distinct `characters.reopen` grant. Self-resolution is denied in the RPC, RLS and database constraints. The non-login review role reads character and boost projections to count occupied slots. Bounded endpoints expose archived sheets and request history without exposing current drafts belonging to another player. The migration creates no grant rows.
+
 ## Future reviewer role mapping
 
 The direction designated these Discord role IDs as candidates for the same HRP capability. This is planning data.
@@ -46,7 +50,7 @@ The direction designated these Discord role IDs as candidates for the same HRP c
 | 1470074424865591387 | characters.review |
 | 1572701721967206470 | characters.review |
 
-Propose resolving membership in the intended guild through a trusted server-side source against the verified Discord identity. Deny automatic grants if identity or guild membership cannot be verified. Track grant provenance so removing one mapped role does not remove another valid source or an authorized manual grant. Define verification freshness, role-loss handling, operator audit and a dry-run reconciliation before enabling synchronization. The API continues to check effective database capabilities. RP character types and player claims convey no HRP authority. The proposed characters.reopen capability is separate and has no automatic mapping.
+Propose resolving membership in the intended guild through a trusted server-side source against the verified Discord identity. Deny automatic grants if identity or guild membership cannot be verified. Track grant provenance so removing one mapped role does not remove another valid source or an authorized manual grant. Define verification freshness, role-loss handling, operator audit and a dry-run reconciliation before enabling synchronization. The API continues to check effective database capabilities. RP character types and player claims convey no HRP authority. The `characters.reopen` capability has no automatic mapping or implicit inheritance from `characters.review`.
 
 ## Open decisions
 

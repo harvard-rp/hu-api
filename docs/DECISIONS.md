@@ -41,3 +41,7 @@ Read the account ID from the Discord identity managed by Supabase Auth. Revalida
 ## HU-009F-A — Character policy before implementation
 
 [Character policy](CHARACTER_POLICY.md) records the approved target, proposed design and remaining decisions. SQL, API, frontend and Discord behavior remain at their reference implementations. The proposed migration preserves legacy decisions and assigns new Houses only at final student approval. The reopening design retains lifetime refusals and uses the player capacity lock. Coordinate future notification events with HU-010A without making decisions depend on Discord delivery.
+
+## HU-009F-B — Lifecycle archive and reopening
+
+Keep archive disposition separate from validation and use status. Count lifetime refusals from history and update the count with each decision. Bind each reopening request to the refusal review for that archive cycle. Lock player capacity before the character in slot-changing writes. Record external URL, examined revision, decision time and attestation as review evidence. Coordinate the rollout with [HU-009F-C](CHARACTER_POLICY_MIGRATION.md).

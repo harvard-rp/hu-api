@@ -3,5 +3,6 @@
   "name": "hu-api",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-26",
+  "keep_vars": true,
   "send_metrics": false,
 }

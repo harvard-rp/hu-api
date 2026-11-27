@@ -91,6 +91,28 @@ The Auth-wide signup switch permits new OAuth accounts. The email and SMS provid
 | Supabase Auth access token        | User bearer credential for Hono and PostgREST.                                        |
 | Discord provider token            | Discord API credential with the scopes the user granted. Bootstrap never consumes it. |
 
+## Temporary signup restriction
+
+The migration `20261127085714_restrict_discord_signups.sql` installs `signup_guard.before_user_created(jsonb)` and an empty, RLS-protected `signup_guard.discord_allowlist`. The allowlist uses canonical decimal text for Discord snowflakes. The schema is outside the Data API, and the hook runs with the invoker's privileges. Only the Supabase Auth role `supabase_auth_admin` receives execution and lookup access. Operators maintain the list through trusted SQL. The hook returns a generic 403 when it cannot approve a new user and makes no writes. Player initialization and HRP permissions remain separate.
+
+### Before-insert identity provenance
+
+The Supabase CLI 3.4.0 stack pins GoTrue 2.198.0. The Discord adapter exchanges the OAuth authorization code and calls Discord's authenticated `/users/@me` endpoint. It copies the returned Discord ID into its provider subject and provider ID fields. In the new-account callback, GoTrue constructs a fresh user and sets `app_metadata.provider` and `app_metadata.providers` from the server-selected provider. The callback copies the verified provider profile into the event's `user.user_metadata` before the user is stored. The event's `user.identities` array is still empty at this point.
+
+For that exact callback shape, the hook requires one server-selected provider, `discord`, and matching string values for the pre-insert `sub` and `provider_id`. Public password and anonymous signup handlers cannot set the server-selected provider to Discord by submitting profile data. Persisted, user-editable profile metadata is outside the authority chain. The existing bootstrap RPC still reads the persisted `auth.identities` record. Review the event construction and rerun the signup checks on changes to GoTrue or its provider configuration.
+
+Source references from GoTrue 2.198.0 include the [Discord adapter](https://github.com/supabase/auth/blob/v2.198.0/internal/api/provider/discord.go#L72-L123), the [OAuth exchange and profile lookup](https://github.com/supabase/auth/blob/v2.198.0/internal/api/external_oauth.go#L116-L127), the [external signup hook](https://github.com/supabase/auth/blob/v2.198.0/internal/api/hooks.go#L69-L113) and the [provider and metadata construction](https://github.com/supabase/auth/blob/v2.198.0/internal/api/signup.go#L19-L28).
+
+### Dashboard activation
+
+1. Keep new signups disabled while an authorized operator applies the migration and confirms the hosted GoTrue payload matches the pinned version.
+2. In **Authentication → Hooks**, add or edit **Before User Created** and select a Postgres hook. Choose schema `signup_guard` and function `before_user_created`. Its URI is `pg-functions://postgres/signup_guard/before_user_created`. Save it and keep the schema outside the project's exposed Data API schemas.
+3. Using trusted SQL, insert only the approved test accounts into `signup_guard.discord_allowlist (discord_id)`. Pass the verified Discord snowflakes as quoted text or query parameters. Keep the values out of Git, logs and chat.
+4. Once opening test signup is authorized, enable new-user signup with Discord as the only public signup provider. Keep anonymous signup and manual account linking disabled. Try a new allowlisted account and a new unlisted account. The committed local stack has the hook enabled and signups disabled.
+5. To stop new signups, disable them first. Removing a row blocks future registrations using that ID. It does not delete accounts, revoke sessions or change any link already created.
+
+The hook applies to new users on the paths where Auth invokes Before User Created. It does not control subsequent sign-in, refresh, or an automatic identity link to an existing user. It is not a policy for privileged administrative provisioning or direct SQL writes. Keep those paths under operator control. [Supabase Auth Hooks](https://supabase.com/docs/guides/auth/auth-hooks) · [Before User Created](https://supabase.com/docs/guides/auth/auth-hooks/before-user-created-hook)
+
 ## Server membership
 
 Discord identity proves control of a Discord account at identity linking. Guild membership is a separate decision. A future authorized check could use the Discord OAuth `guilds.members.read` scope for the current member endpoint, the `guilds` scope for the user's guild list, or an authorized bot lookup. Membership policy, including how to treat former, banned and external users, is still open. A player row provides no server role, admission or campus eligibility.

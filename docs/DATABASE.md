@@ -24,7 +24,7 @@ pnpm supabase:start
 pnpm supabase:status
 ```
 
-The start script creates or validates the `supabase_network_hu-api` Docker bridge with the host binding set to `127.0.0.1`. Use this script to keep the stack on loopback. The local API listens on `127.0.0.1:54321`, PostgreSQL on port `54322`, and Studio on port `54323`. Keep these ports off tunnels and public proxies. The CLI provides its own local credentials. Project signup and Data API auto-grants are disabled in `supabase/config.jsonc`.
+The start script creates or validates the `supabase_network_hu-api` Docker bridge with the host binding set to `127.0.0.1`. Use this script to keep the stack on loopback. The local API listens on `127.0.0.1:54321`, PostgreSQL on port `54322`, and Studio on port `54323`. Keep these ports off tunnels and public proxies. The CLI provides its own local credentials. Project signup and Data API auto-grants are disabled in `supabase/config.jsonc`. The local Before User Created hook uses the [Discord test signup restriction](DISCORD_AUTH.md#temporary-signup-restriction).
 
 Create `.dev.vars` from the example and keep its CORS setting as needed. To retrieve only the local Worker settings without printing the CLI status payload, create an ignored file with the following command and copy its two lines into your `.dev.vars`. Remove the temporary file when finished.
 

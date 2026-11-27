@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path to public, extensions;
-select plan(64);
+select plan(67);
 
 create function pg_temp.review_id(prefix text, n integer) returns uuid language sql immutable as $$
   select (prefix || '090000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid
@@ -203,6 +203,28 @@ select ok(not has_column_privilege('hu_character_review', 'private.characters', 
   'staff reviewer cannot alter use state or grant capabilities');
 select ok((select not rolcanlogin and not rolbypassrls and not rolsuper from pg_roles where rolname = 'hu_character_review'),
   'staff reviewer role cannot login or bypass row security');
+
+-- The row-lock grant is not a route to catalog writes.
+create function pg_temp.try_deactivate_house(target uuid) returns boolean
+language plpgsql security invoker as $$
+begin
+  perform set_config('request.jwt.claims', pg_temp.review_claims(1)::text, true);
+  set local role hu_character_review;
+  update public.houses set is_active = false where id = target;
+  reset role;
+  return found;
+exception when insufficient_privilege then
+  return false;
+end;
+$$;
+insert into private.staff_capabilities (staff_actor_id, capability)
+values (pg_temp.review_id('cc', 1), 'characters.review');
+select ok(not pg_temp.try_deactivate_house((select id from active_review_houses where n = 1)),
+  'the reviewer role cannot deactivate a House despite the row-lock grant');
+select ok((select is_active from public.houses where id = (select id from active_review_houses where n = 1)),
+  'the House remains active');
+select ok(not has_schema_privilege('hu_character_review', 'character_review', 'CREATE'),
+  'the function owner cannot create arbitrary routines');
 
 select * from finish();
 rollback;

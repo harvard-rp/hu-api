@@ -69,7 +69,7 @@ jobs:
         timeout-minutes: 2
         run: pnpm test:concurrency
 
-      - name: Verify authorization and concurrent Discord bootstrap with local Auth
+      - name: Verify player authorization, Discord bootstrap and character writes with local Auth
         timeout-minutes: 3
         run: pnpm test:auth:local
 

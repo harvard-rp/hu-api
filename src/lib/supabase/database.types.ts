@@ -197,6 +197,7 @@ export type Database = {
           kind: Database['private']['Enums']['character_kind'];
           player_id: string;
           program_id: string | null;
+          revision: string;
           updated_at: string;
           use_status: Database['private']['Enums']['character_use_status'];
           validation_status: Database['private']['Enums']['validation_status'];
@@ -212,6 +213,7 @@ export type Database = {
           kind: Database['private']['Enums']['character_kind'];
           player_id: string;
           program_id?: string | null;
+          revision?: string;
           updated_at?: string;
           use_status?: Database['private']['Enums']['character_use_status'];
           validation_status?: Database['private']['Enums']['validation_status'];
@@ -226,6 +228,7 @@ export type Database = {
           kind?: Database['private']['Enums']['character_kind'];
           player_id?: string;
           program_id?: string | null;
+          revision?: string;
           updated_at?: string;
           use_status?: Database['private']['Enums']['character_use_status'];
           validation_status?: Database['private']['Enums']['validation_status'];
@@ -405,7 +408,10 @@ export type Database = {
       };
     };
     Functions: {
-      [_ in never]: never;
+      lock_character_capacity: {
+        Args: { owner_id: string };
+        Returns: undefined;
+      };
     };
     Enums: {
       character_kind: 'student' | 'teacher' | 'staff_member' | 'citizen';
@@ -550,6 +556,16 @@ export type Database = {
       };
       current_player_context: {
         Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      player_character_catalog: { Args: { catalog: string }; Returns: Json };
+      player_characters: {
+        Args: {
+          expected_revision?: string;
+          fields?: Json;
+          operation: string;
+          target_id?: string;
+        };
         Returns: Json;
       };
     };

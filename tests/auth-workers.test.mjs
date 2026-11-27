@@ -23,6 +23,37 @@ const context = {
   canAccessCampus: false,
 };
 
+const character = {
+  id: 'a0400000-0000-4000-8000-000000000001',
+  revision: 'a0500000-0000-4000-8000-000000000001',
+  kind: 'citizen',
+  validationStatus: 'draft',
+  useStatus: 'active',
+  createdAt: '2026-11-27T12:00:00+00:00',
+  updatedAt: '2026-11-27T12:00:00+00:00',
+  firstName: 'Fictional',
+  lastName: null,
+  nickname: null,
+  houseId: null,
+  programId: null,
+  isScholarshipHolder: null,
+  age: null,
+  sexualOrientation: null,
+  birthDate: null,
+  birthPlace: null,
+  origins: null,
+  residence: null,
+  financialSituation: null,
+  occupation: null,
+  personality: null,
+  physicalDescription: null,
+  faceClaim: null,
+  backstory: null,
+  anecdotes: null,
+  contentWarnings: null,
+  rpLinks: null,
+};
+
 let configDir;
 let configPath;
 let origin;
@@ -51,7 +82,7 @@ function issueFixtureToken() {
   return `${header}.${claims}.${signature}`;
 }
 
-function simulateSupabase(request, response) {
+async function simulateSupabase(request, response) {
   const { url, method, headers } = request;
   requests.push({
     url,
@@ -96,6 +127,27 @@ function simulateSupabase(request, response) {
   if (url === '/rest/v1/rpc/bootstrap_discord_player') {
     return json(200, { status: 'ok', context });
   }
+  if (url === '/rest/v1/rpc/player_characters') {
+    let serialized = '';
+    for await (const chunk of request.setEncoding('utf8')) serialized += chunk;
+    const parameters = JSON.parse(serialized);
+    requests.at(-1).parameters = parameters;
+    if (scenario === 'character_outage') {
+      return json(503, { message: providerDetail, payload: parameters });
+    }
+    if (parameters.operation === 'capacity') {
+      return json(200, {
+        status: 'ok',
+        data: { total: 5, used: 1, available: 4 },
+      });
+    }
+    if (parameters.operation === 'create')
+      return json(200, { status: 'ok', data: character });
+    if (parameters.operation === 'edit')
+      return json(200, { status: 'revision_conflict' });
+    if (parameters.operation === 'submit')
+      return json(200, { status: 'incomplete' });
+  }
   return json(404, {});
 }
 
@@ -128,6 +180,7 @@ async function call(server, path, method = 'GET', token = validToken, body) {
     headers: {
       Authorization: `Bearer ${token}`,
       Cookie: 'test-only-private-cookie',
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
     },
   });
 }
@@ -302,3 +355,128 @@ it.each([
     }
   },
 );
+
+const charactersPath = '/api/v1/characters';
+const detailPath = `${charactersPath}/${character.id}`;
+
+it('routes capacity and draft creation with the caller JWT in workerd', async () => {
+  const capacity = await call(worker, `${charactersPath}/capacity`);
+  expect(capacity.status).toBe(200);
+  expect(await capacity.json()).toEqual({ total: 5, used: 1, available: 4 });
+  const fields = { kind: 'citizen', firstName: 'Fictional' };
+  const response = await call(
+    worker,
+    charactersPath,
+    'POST',
+    validToken,
+    JSON.stringify(fields),
+  );
+  expect(response.status).toBe(201);
+  expect(response.headers.get('Cache-Control')).toBe('no-store');
+  expect(await response.json()).toEqual(character);
+  expect(requests.at(-1)).toMatchObject({
+    url: '/rest/v1/rpc/player_characters',
+    authorization: `Bearer ${validToken}`,
+    apikey: publishableKey,
+    parameters: { operation: 'create', fields },
+  });
+  expect(requests.at(-1).parameters).toEqual({ operation: 'create', fields });
+});
+
+it.each([
+  ['POST', charactersPath, '{', 400],
+  ['POST', charactersPath, '{"kind":"citizen","playerId":"untrusted"}', 400],
+  ['POST', charactersPath, '{"kind":"student","houseId":null}', 400],
+  [
+    'PATCH',
+    detailPath,
+    JSON.stringify({ expectedRevision: character.revision }),
+    400,
+  ],
+  ['GET', `${charactersPath}?playerId=untrusted`, undefined, 400],
+  [
+    'POST',
+    charactersPath,
+    JSON.stringify({ kind: 'citizen', backstory: 'a'.repeat(96 * 1024) }),
+    413,
+  ],
+])(
+  'rejects invalid %s character requests before the RPC',
+  async (method, path, body, status) => {
+    const response = await call(worker, path, method, validToken, body);
+    expect(response.status).toBe(status);
+    expect(await response.json()).toMatchObject({
+      error: {
+        code:
+          status === 413
+            ? 'CHARACTER_REQUEST_TOO_LARGE'
+            : 'INVALID_CHARACTER_REQUEST',
+      },
+    });
+    expect(requests.map(({ url }) => url)).toEqual(['/auth/v1/user']);
+  },
+);
+
+it('maps stale edits and incomplete submissions without exposing the sheet', async () => {
+  const edit = await call(
+    worker,
+    detailPath,
+    'PATCH',
+    validToken,
+    JSON.stringify({
+      expectedRevision: character.revision,
+      firstName: 'Synthetic private field',
+    }),
+  );
+  expect(edit.status).toBe(409);
+  expect(await edit.json()).toMatchObject({
+    error: { code: 'CHARACTER_REVISION_CONFLICT' },
+  });
+  expect(requests.at(-1).parameters).toEqual({
+    operation: 'edit',
+    target_id: character.id,
+    expected_revision: character.revision,
+    fields: { firstName: 'Synthetic private field' },
+  });
+  const submit = await call(
+    worker,
+    `${detailPath}/submit`,
+    'POST',
+    validToken,
+    JSON.stringify({
+      expectedRevision: character.revision,
+    }),
+  );
+  expect(submit.status).toBe(422);
+  expect(await submit.json()).toMatchObject({
+    error: { code: 'CHARACTER_INCOMPLETE' },
+  });
+});
+
+it('redacts character content and provider details on a Data API failure', async () => {
+  scenario = 'character_outage';
+  const response = await call(
+    worker,
+    charactersPath,
+    'POST',
+    validToken,
+    JSON.stringify({
+      kind: 'citizen',
+      backstory: 'Synthetic private narrative',
+    }),
+  );
+  expect(response.status).toBe(503);
+  const requestId = response.headers.get('X-Request-Id');
+  expect(await response.json()).toEqual({
+    error: {
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'The character dependency is temporarily unavailable.',
+      requestId,
+    },
+  });
+  await vi.waitFor(() =>
+    expect(worker.logs.map(({ level, message }) => [level, message])).toEqual([
+      ['error', JSON.stringify({ requestId, status: 503 })],
+    ]),
+  );
+});

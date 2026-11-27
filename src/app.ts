@@ -10,6 +10,10 @@ import { errorBody } from './lib/http-contract';
 import { noStore } from './middleware/authentication';
 import { requestContext, type AppEnv } from './middleware/request-context';
 import { bootstrapRoute, postBootstrap } from './routes/bootstrap';
+import {
+  CharacterRequestError,
+  registerCharacterRoutes,
+} from './routes/characters';
 import { healthRoute } from './routes/health';
 import { getMe, meRoute } from './routes/me';
 import { openApiConfig, openApiRoute } from './routes/openapi';
@@ -39,12 +43,13 @@ export function createApp() {
   app.notFound((c) =>
     c.json(errorBody(c, 'NOT_FOUND', 'Route not found.'), 404),
   );
-  app.onError((_error, c) =>
-    c.json(
+  app.onError((error, c) => {
+    if (error instanceof CharacterRequestError) return error.response(c);
+    return c.json(
       errorBody(c, 'INTERNAL_ERROR', 'An unexpected error occurred.'),
       500,
-    ),
-  );
+    );
+  });
 
   app.openapi(healthRoute, (c) =>
     c.json({ status: 'ok', service: 'hu-api' } as const, 200),
@@ -60,6 +65,7 @@ export function createApp() {
   });
   app.openapi(meRoute, getMe);
   app.openapi(bootstrapRoute, postBootstrap);
+  registerCharacterRoutes(app);
 
   return app;
 }
